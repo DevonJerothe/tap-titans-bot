@@ -1,0 +1,43 @@
+{
+  "emulator_window": "<EMULATOR NAME HERE>",
+  "failsafe_enabled": true,
+  "fairies_pi_hole": false,
+  "level_master_enabled": true,
+  "level_master_on_start": true,
+  "level_master_interval": 45,
+  "level_skills_enabled": true,
+  "level_skills_on_start": true,
+  "level_skills_interval": 300,
+  "activate_skills_enabled": true,
+  "activate_skills_on_start": true,
+  "activate_skills_interval": 30,
+  "activate_skills_enabled_skills": {
+    "heavenly_strike": true,
+    "deadly_strike": true,
+    "hand_of_midas": true,
+    "fire_sword": true,
+    "war_cry": true,
+    "shadow_clone": true
+  },
+  "level_heroes_enabled": true,
+  "level_heroes_on_start": true,
+  "level_heroes_interval": 30,
+  "level_heroes_masteries_unlocked": false,
+  "prestige_time_enabled": true,
+  "prestige_time_interval": 2700,
+  "prestige_stage_enabled": false,
+  "prestige_stage_threshold": 10000,
+  "prestige_close_to_max_enabled": false,
+  "prestige_close_to_max_post_interval": 0,
+  "artifacts_enabled": true,
+  "artifacts_enchantment_enabled": true,
+  "artifacts_discovery_enabled": true,
+  "artifacts_upgrade_enabled": true,
+  "artifacts_upgrade_artifact": null,
+  "artifacts_upgrade_tier": {
+    "s": true,
+    "a": false,
+    "b": false,
+    "c": false
+  }
+}
