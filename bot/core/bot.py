@@ -1163,8 +1163,8 @@ class Bot(object):
 
                         while not self.search(
                             image=self.files["fairies_collect"],
-                            region=self.configurations["regions"]["fairies"]["collect_area"],
-                            precision=self.configurations["parameters"]["fairies"]["collect_precision"],
+                            region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
+                            precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
                         )[0]:
                             self.click(
                                 point=self.configurations["points"]["fairies"]["collect_or_watch"],
