@@ -1002,11 +1002,13 @@ class Bot(object):
                     ),
                     config="--psm 7 --oem 0 nobatch",
                 )
-                result = int("".join(filter(str.isdigit, result)))
+                result = "".join(filter(str.isdigit, result))
+                result = int(result) if result else None
                 # Ensure result is a valid amount, based on hard configurations
                 # and user configurations (if specified).
                 if (
-                    self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                    result
+                    and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
                     and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
                     and result <= self.configurations["global"]["game"]["max_stage"]
                 ):
@@ -1048,11 +1050,13 @@ class Bot(object):
                 ),
                 config="--psm 7 --oem 0 nobatch",
             )
-            result = int("".join(filter(str.isdigit, result)))
+            result = "".join(filter(str.isdigit, result))
+            result = int(result) if result else None
             # Ensure result is a valid amount, based on hard configurations
             # and user configurations (if specified).
             if (
-                self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                result
+                and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
                 and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
                 and result <= self.configurations["global"]["game"]["max_stage"]
             ):
@@ -1840,9 +1844,9 @@ class Bot(object):
 
         self.parse_current_stage()
         current_stage = self.current_stage
-        require_stage = calculate_percent(amount=current_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
+        require_stage = calculate_percent(amount=self.max_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
 
-        if current_stage and current_stage >= require_stage:
+        if current_stage and require_stage and current_stage >= require_stage:
             self.logger.info(
                 "Current stage: \"%(current_stage)s\" exceeds the configured percent threshold: \"%(percent)s - %(require_stage)s\"..." % {
                     "current_stage": current_stage,
