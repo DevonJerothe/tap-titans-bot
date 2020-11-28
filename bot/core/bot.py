@@ -9,8 +9,13 @@ from license_validator.exceptions import (
 from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.imagesearch import image_search_area, click_image
 from bot.core.decorators import event
-from bot.core.exceptions import LicenseAuthenticationError
-from bot.core.utilities import create_logger, decrypt_secret
+from bot.core.exceptions import LicenseAuthenticationError, GameStateException
+from bot.core.utilities import (
+    create_logger,
+    decrypt_secret,
+    most_common_result,
+    calculate_percent,
+)
 
 from itertools import cycle
 from pyautogui import FailSafeException
@@ -414,6 +419,10 @@ class Bot(object):
                 "enabled": self.configuration["prestige_close_to_max_enabled"],
                 "interval": self.configurations["global"]["prestige_close_to_max"]["prestige_close_to_max_interval"],
             },
+            self.prestige_percent_of_max_stage: {
+                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
+                "interval": self.configurations["global"]["prestige_percent_of_max_stage"]["prestige_percent_of_max_stage_interval"]
+            },
         }.items():
             if data["enabled"]:
                 self.schedule_function(
@@ -464,6 +473,22 @@ class Bot(object):
                 "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
                 "execute": self.configurations["global"]["inbox"]["inbox_on_start"],
             },
+            self.parse_max_stage: {
+                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
+                "execute": self.configuration["prestige_percent_of_max_stage_enabled"],
+            },
+            self.level_master: {
+                "enabled": self.configuration["level_master_enabled"],
+                "execute": self.configuration["level_master_on_start"],
+            },
+            self.level_skills: {
+                "enabled": self.configuration["level_skills_enabled"],
+                "execute": self.configuration["level_skills_on_start"],
+            },
+            self.activate_skills: {
+                "enabled": self.configuration["activate_skills_enabled"],
+                "execute": self.configuration["activate_skills_on_start"],
+            },
             # Tap comes before daily rewards because issues may crop up when
             # a fairy is displayed when trying to collect rewards. Tapping first
             # gets rid of and collects fairies before that can happen.
@@ -478,18 +503,6 @@ class Bot(object):
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "execute": self.configurations["global"]["achievements"]["achievements_on_start"],
-            },
-            self.level_master: {
-                "enabled": self.configuration["level_master_enabled"],
-                "execute": self.configuration["level_master_on_start"],
-            },
-            self.level_skills: {
-                "enabled": self.configuration["level_skills_enabled"],
-                "execute": self.configuration["level_skills_on_start"],
-            },
-            self.activate_skills: {
-                "enabled": self.configuration["activate_skills_enabled"],
-                "execute": self.configuration["activate_skills_on_start"],
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
@@ -962,15 +975,74 @@ class Bot(object):
             pause=pause,
         )
 
+    def parse_max_stage(self):
+        """
+        Attempt to retrieve the current max stage that a user has reached.
+        """
+        if self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]:
+            self.logger.info(
+                "Prestige of max stage percent is set to use a manually set maximum stage, using "
+                "this value instead of parsing the stage from game..."
+            )
+            self.max_stage = self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]
+        else:
+            self.travel_to_master()
+            self.logger.info(
+                "Attempting to parse current max stage from game..."
+            )
+            self.find_and_click_image(
+                image=self.files["travel_master_scroll_top"],
+                region=self.configurations["regions"]["parse_max_stage"]["master_icon_area"],
+                precision=self.configurations["parameters"]["parse_max_stage"]["master_icon_precision"],
+                pause=self.configurations["parameters"]["parse_max_stage"]["master_icon_pause"],
+            )
+            results = []
+            # Loop and gather results about the max stage...
+            # We do this multiple times to try and stave off any false
+            # positives, we'll use the most common result as our final.
+            for i in range(self.configurations["parameters"]["parse_max_stage"]["result_loops"]):
+                result = pytesseract.image_to_string(
+                    image=self.process(
+                        region=self.configurations["regions"]["parse_max_stage"]["max_stage_area"],
+                        scale=self.configurations["parameters"]["parse_max_stage"]["scale"],
+                        threshold=self.configurations["parameters"]["parse_max_stage"]["threshold"],
+                        invert=self.configurations["parameters"]["parse_max_stage"]["invert"],
+                    ),
+                    config="--psm 7 --oem 0 nobatch",
+                )
+                result = int("".join(filter(str.isdigit, result)))
+                # Ensure result is a valid amount, based on hard configurations
+                # and user configurations (if specified).
+                if (
+                    self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                    and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                    and result <= self.configurations["global"]["game"]["max_stage"]
+                ):
+                    results.append(result)
+            self.max_stage = most_common_result(
+                results=results,
+            )
+            self.logger.info(
+                "Maximum Stage: %(maximum_stage)s..." % {
+                    "maximum_stage": self.max_stage,
+                }
+            )
+            self.find_and_click_image(
+                image=self.files["large_exit"],
+                region=self.configurations["regions"]["parse_max_stage"]["exit_area"],
+                precision=self.configurations["parameters"]["parse_max_stage"]["exit_precision"],
+                pause=self.configurations["parameters"]["parse_max_stage"]["exit_pause"],
+            )
+
     def parse_current_stage(self):
         """
         Attempt to retrieve the current stage that the user is on in game.
         """
-        self.travel_to_main_screen()
-
-        result = None
+        self.collapse()
+        self.logger.info(
+            "Attempting to parse current stage from game..."
+        )
         results = []
-
         # Loop and gather results about the current stage...
         # We do this multiple times to try and stave off any false
         # positives, we'll use the most common result as our final.
@@ -984,29 +1056,23 @@ class Bot(object):
                 ),
                 config="--psm 7 --oem 0 nobatch",
             )
-            results.append("".join(
-                filter(str.isdigit, result),
-            ))
-
-        # Create a counter to store the most common result
-        # we've seen...
-        counter = 0
-
-        # Looping through each result, updating the
-        # current tier that we will use if it's present
-        # more than the last one.
-        for res in results:
-            freq = results.count(res)
-            if freq > counter:
-                counter = freq
-                result = res
-
-        self.logger.debug(
-            "Current Stage: %(current_stage)s" % {
-                "current_stage": result,
-            },
+            result = int("".join(filter(str.isdigit, result)))
+            # Ensure result is a valid amount, based on hard configurations
+            # and user configurations (if specified).
+            if (
+                self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                and result <= self.configurations["global"]["game"]["max_stage"]
+            ):
+                results.append(result)
+        self.current_stage = most_common_result(
+            results=results,
         )
-        return int(result) if result else None
+        self.logger.info(
+            "Current Stage: %(current_stage)s..." % {
+                "current_stage": self.current_stage,
+            }
+        )
 
     def fight_boss(self):
         """
@@ -1652,11 +1718,13 @@ class Bot(object):
         """
         Perform a prestige in game when the current stage exceeds the configured limit.
         """
-        self.travel_to_main_screen()
+        self.collapse()
         self.logger.info(
             "Checking current stage to determine if prestige should be performed..."
         )
-        current_stage = self.parse_current_stage()
+
+        self.parse_current_stage()
+        current_stage = self.current_stage
         require_stage = self.configuration["prestige_stage_threshold"]
 
         if current_stage and current_stage >= require_stage:
@@ -1684,76 +1752,99 @@ class Bot(object):
         When either of these conditions are met, we can make the assumption that a prestige
         should take place.
         """
-        if self.configuration["prestige_close_to_max_enabled"]:
-            self.travel_to_master()
-            self.logger.info(
-                "Checking if prestige should be performed due to being close to max stage..."
-            )
-            interval = self.configuration["prestige_close_to_max_post_interval"]
-            prestige = False
+        self.travel_to_master()
+        self.logger.info(
+            "Checking if prestige should be performed due to being close to max stage..."
+        )
+        interval = self.configuration["prestige_close_to_max_post_interval"]
+        prestige = False
 
-            if self.configurations["global"]["events"]["event_running"]:
+        if self.configurations["global"]["events"]["event_running"]:
+            self.logger.info(
+                "Event is currently running, checking for event icon present on master panel..."
+            )
+            # Event is running, let's check the master panel for
+            # the current event icon.
+            if self.search(
+                image=self.files["prestige_close_to_max_event_icon"],
+                region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
+                precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
+            )[0]:
+                prestige = True
+        else:
+            # No event is running, instead, we will open the skill tree,
+            # and check that the reset icon is present.
+            self.logger.info(
+                "No event is currently running, checking for prestige reset on skill tree..."
+            )
+            self.click(
+                point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
+                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
+            )
+            if self.search(
+                image=self.files["prestige_close_to_max_skill_tree_icon"],
+                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
+                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
+            )[0]:
+                prestige = True
+            # Closing the skill tree once finished.
+            # "prestige" variable will determine next steps below.
+            self.find_and_click_image(
+                image=self.files["large_exit"],
+                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+            )
+        if prestige:
+            self.logger.info(
+                "Prestige is ready..."
+            )
+            if interval > 0:
                 self.logger.info(
-                    "Event is currently running, checking for event icon present on master panel..."
+                    "Scheduling prestige to take place in %(interval)s second(s)..." % {
+                        "interval": interval,
+                    }
                 )
-                # Event is running, let's check the master panel for
-                # the current event icon.
-                if self.search(
-                    image=self.files["prestige_close_to_max_event_icon"],
-                    region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
-                    precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
-                )[0]:
-                    prestige = True
+                # Cancel the scheduled prestige functions
+                # if it's present so the options don't clash.
+                self.cancel_scheduled_function(tags=[
+                    self.prestige.__name__,
+                    self.prestige_stage.__name__,
+                    self.prestige_close_to_max.__name__,
+                ])
+                self.schedule_function(
+                    function=self.prestige,
+                    interval=interval,
+                )
             else:
-                # No event is running, instead, we will open the skill tree,
-                # and check that the reset icon is present.
                 self.logger.info(
-                    "No event is currently running, checking for prestige reset on skill tree..."
+                    "Executing prestige now..."
                 )
-                self.click(
-                    point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
-                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
-                )
-                if self.search(
-                    image=self.files["prestige_close_to_max_skill_tree_icon"],
-                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
-                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
-                )[0]:
-                    prestige = True
-                # Closing the skill tree once finished.
-                # "prestige" variable will determine next steps below.
-                self.find_and_click_image(
-                    image=self.files["large_exit"],
-                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
-                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
-                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
-                )
-            if prestige:
-                self.logger.info(
-                    "Prestige is ready..."
-                )
-                if interval > 0:
-                    self.logger.info(
-                        "Scheduling prestige to take place in %(interval)s second(s)..." % {
-                            "interval": interval,
-                        }
-                    )
-                    # Cancel the scheduled prestige functions
-                    # if it's present so the options don't clash.
-                    self.cancel_scheduled_function(tags=[
-                        self.prestige.__name__,
-                        self.prestige_stage.__name__,
-                        self.prestige_close_to_max.__name__,
-                    ])
-                    self.schedule_function(
-                        function=self.prestige,
-                        interval=interval,
-                    )
-                else:
-                    self.logger.info(
-                        "Executing prestige now..."
-                    )
-                    self.prestige()
+                self.prestige()
+
+    def prestige_percent_of_max_stage(self):
+        """
+        Perform a prestige in game when the user has reached the stage required that represents
+        a certain percent of their current maximum stage.
+        """
+        self.collapse()
+        self.logger.info(
+            "Checking current stage to determine if percent prestige should be performed..."
+        )
+
+        self.parse_current_stage()
+        current_stage = self.current_stage
+        require_stage = calculate_percent(amount=current_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
+
+        if current_stage and current_stage >= require_stage:
+            self.logger.info(
+                "Current stage: \"%(current_stage)s\" exceeds the configured percent threshold: \"%(percent)s - %(require_stage)s\"..." % {
+                    "current_stage": current_stage,
+                    "percent": self.configuration["prestige_percent_of_max_stage_percent"],
+                    "require_stage": require_stage,
+                }
+            )
+            self.prestige()
 
     def tap(self):
         """
