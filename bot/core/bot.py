@@ -209,11 +209,8 @@ class Bot(object):
         # The file should just be loaded and placed into our configuration.
         with open(self.license.program_configuration_file, mode="r") as file:
             self.configuration = json.loads(file.read())
-
         self.logger.debug(
-            "Local Configuration: %(configuration)s" % {
-                "configuration": self.configuration,
-            }
+            "Local Configuration: Loaded..."
         )
 
     def configure_dependencies(self):
@@ -229,7 +226,9 @@ class Bot(object):
             "tesseract",
             "tesseract.exe",
         )
-        # Log information about successful dependency parsing/configuring.
+        self.logger.debug(
+            "Dependencies: Loaded..."
+        )
         self.logger.debug("Tesseract CMD: %(tesseract_cmd)s" % {
             "tesseract_cmd": pytesseract.tesseract_cmd,
         })
@@ -246,11 +245,8 @@ class Bot(object):
             for version in scan:
                 for file in os.scandir(version.path):
                     self.files[file.name.split(".")[0]] = file.path
-
         self.logger.debug(
-            "Program Files: %(files)s" % {
-                "files": self.files,
-            }
+            "Program Files: Loaded..."
         )
 
     def configure_configurations(self):
@@ -262,7 +258,6 @@ class Bot(object):
         # license can be handled here.
         with open(self.license.program_configurations_file, mode="r") as file:
             self.configurations = json.loads(decrypt_secret(file.read()))
-
         # Hide the global configurations being used...
         # Knowing that they're loaded is fine here.
         self.logger.debug(
@@ -281,9 +276,6 @@ class Bot(object):
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
         }
-        # Handle artifact information...
-        # We need certain data parsed during run time so we don't
-        # have to gather this data for every prestige during a session.
         tiers = [tier for tier, enabled in self.configuration["artifacts_upgrade_tier"].items() if enabled]
         upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
         if self.configuration["artifacts_upgrade_artifact"]:
