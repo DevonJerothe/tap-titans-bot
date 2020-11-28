@@ -752,6 +752,19 @@ class Bot(object):
             and color_range[2][0] <= pixel[2] <= color_range[2][1]
         )
 
+    @staticmethod
+    def point_is_region(
+        point,
+        region,
+    ):
+        """
+        Check that a specific point is currently within a region.
+        """
+        return (
+            region[0] <= point[0] <= region[2]
+            and region[1] <= point[1] <= region[3]
+        )
+
     def click(
         self,
         point,
@@ -1654,12 +1667,24 @@ class Bot(object):
         ]
         for key in maps:
             tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
+
+        if self.search(
+            image=self.files["one_time_offer"],
+            region=self.configurations["regions"]["tap"]["one_time_offer_area"],
+            precision=self.configurations["parameters"]["tap"]["one_time_offer_precision"],
+        )[0]:
+            # A one time offer is on the screen, we'll filter out any tap points that fall
+            # within this point, this prevents us from buying anything in the store.
+            tap = [point for point in tap if not self.point_is_region(
+                point=point,
+                region=self.configurations["regions"]["tap"]["one_time_offer_prevent_area"],
+            )]
         for index, point in enumerate(tap):
             if index % 5 == 0:
                 # Also handle the fact that fairies could appear
                 # and be clicked on while tapping is taking place.
                 self.fairies()
-            self.window.click(
+            self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
                 offset=random.randint(
