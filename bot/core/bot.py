@@ -2256,7 +2256,6 @@ class Bot(object):
                     "key": err,
                 }
             )
-            raise
         except LicenseAuthenticationError:
             self.logger.info(
                 "An authentication error has occurred. Ending session now..."
