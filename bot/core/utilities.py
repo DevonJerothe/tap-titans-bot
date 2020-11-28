@@ -148,4 +148,6 @@ def calculate_percent(amount, percent):
     """
     Calculate the percent of a specified amount.
     """
+    if not amount:
+        return None
     return int(amount * float(percent) / 100)
