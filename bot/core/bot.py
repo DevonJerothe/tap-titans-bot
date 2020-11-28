@@ -989,10 +989,11 @@ class Bot(object):
                 pause=self.configurations["parameters"]["parse_max_stage"]["master_icon_pause"],
             )
             results = []
+            loops = self.configurations["parameters"]["parse_max_stage"]["result_loops"]
             # Loop and gather results about the max stage...
             # We do this multiple times to try and stave off any false
             # positives, we'll use the most common result as our final.
-            for i in range(self.configurations["parameters"]["parse_max_stage"]["result_loops"]):
+            for i in range(loops):
                 result = pytesseract.image_to_string(
                     image=self.process(
                         region=self.configurations["regions"]["parse_max_stage"]["max_stage_area"],
@@ -1002,11 +1003,20 @@ class Bot(object):
                     ),
                     config="--psm 7 --oem 0 nobatch",
                 )
-                result = int("".join(filter(str.isdigit, result)))
+                self.logger.debug(
+                    "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                        "loop": i,
+                        "loops": loops,
+                        "result": result
+                    }
+                )
+                result = "".join(filter(str.isdigit, result))
+                result = int(result) if result else None
                 # Ensure result is a valid amount, based on hard configurations
                 # and user configurations (if specified).
                 if (
-                    self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                    result
+                    and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
                     and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
                     and result <= self.configurations["global"]["game"]["max_stage"]
                 ):
@@ -1035,10 +1045,11 @@ class Bot(object):
             "Attempting to parse current stage from game..."
         )
         results = []
+        loops = self.configurations["parameters"]["parse_current_stage"]["result_loops"]
         # Loop and gather results about the current stage...
         # We do this multiple times to try and stave off any false
         # positives, we'll use the most common result as our final.
-        for i in range(self.configurations["parameters"]["parse_current_stage"]["result_loops"]):
+        for i in range(loops):
             result = pytesseract.image_to_string(
                 image=self.process(
                     region=self.configurations["regions"]["parse_current_stage"]["current_stage_area"],
@@ -1048,11 +1059,20 @@ class Bot(object):
                 ),
                 config="--psm 7 --oem 0 nobatch",
             )
-            result = int("".join(filter(str.isdigit, result)))
+            self.logger.debug(
+                "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "loop": i,
+                    "loops": loops,
+                    "result": result
+                }
+            )
+            result = "".join(filter(str.isdigit, result))
+            result = int(result) if result else None
             # Ensure result is a valid amount, based on hard configurations
             # and user configurations (if specified).
             if (
-                self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
+                result
+                and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
                 and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
                 and result <= self.configurations["global"]["game"]["max_stage"]
             ):
@@ -1700,7 +1720,7 @@ class Bot(object):
                     )
         # Update the next artifact that will be upgraded.
         # This is done regardless of upgrade state (success/fail).
-        self.next_artifact_upgrade = next(self.upgrade_artifacts)
+        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
         self.master_levelled = False
 
         # Handle some forcing of certain functionality post prestige below.
@@ -1840,9 +1860,9 @@ class Bot(object):
 
         self.parse_current_stage()
         current_stage = self.current_stage
-        require_stage = calculate_percent(amount=current_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
+        require_stage = calculate_percent(amount=self.max_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
 
-        if current_stage and current_stage >= require_stage:
+        if current_stage and require_stage and current_stage >= require_stage:
             self.logger.info(
                 "Current stage: \"%(current_stage)s\" exceeds the configured percent threshold: \"%(percent)s - %(require_stage)s\"..." % {
                     "current_stage": current_stage,
