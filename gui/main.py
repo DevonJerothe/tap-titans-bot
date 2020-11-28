@@ -37,6 +37,7 @@ import PySimpleGUIWx as sg
 import sentry_sdk
 import threading
 import webbrowser
+import time
 import uuid
 import os
 
@@ -324,6 +325,20 @@ class GUI(object):
         """
         raise SystemExit
 
+    def purge_old_logs(self, days=5):
+        """
+        Purge any logs present that are older than the specified amount of days.
+        """
+        for log in os.listdir(self.license.program_logs_directory):
+            if os.path.getmtime(os.path.join(self.license.program_logs_directory, log)) < time.time() - days * 86400:
+                self.logger.info(
+                    "Purging old log file: %(log)s..." % {
+                        "log": log,
+                    }
+                )
+                if os.path.isfile(os.path.join(self.license.program_logs_directory, log)):
+                    os.remove(os.path.join(self.license.program_logs_directory, log))
+
     def run(self):
         """
         Begin main runtime loop for application.
@@ -344,6 +359,7 @@ class GUI(object):
                 "contact the support team for additional help."
             )
             self.logger.info("===================================================================================")
+            self.purge_old_logs()
             # Sentry can have some tags set for any issues that
             # crop up during our gui functionality...
             sentry_sdk.set_tag("package", "gui")
