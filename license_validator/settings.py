@@ -8,7 +8,7 @@ from os import path
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "4$'u.bcw$XP.bA4c_o{%"
+VALIDATION_IDENTIFIER_SECRET = "z$lMmczM$b4coooo"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
