@@ -268,6 +268,7 @@ class Bot(object):
         """
         Configure any additional variables or values that can be used throughout session runtime.
         """
+        # GLOBAL INFO.
         self.image_tabs = {
             self.files["travel_master_icon"]: "master",
             self.files["travel_heroes_icon"]: "heroes",
@@ -285,20 +286,32 @@ class Bot(object):
                 if artifact not in upgrade_artifacts:
                     upgrade_artifacts.append(artifact)
 
-        self.upgrade_artifacts = cycle(upgrade_artifacts)
-        self.next_artifact_upgrade = next(self.upgrade_artifacts)
+        # ARTIFACTS INFO.
+        self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
+        self.next_artifact_upgrade = next(self.upgrade_artifacts) if upgrade_artifacts else None
+        # SESSION LEVEL INFO.
+        self.current_stage = None
+        self.max_stage = None
+        # PER PRESTIGE INFO.
+        self.master_levelled = False
 
         # Log some information about the additional configurations
         # that have been parsed out.
         self.logger.info(
+            "====================================================================="
+        )
+        self.logger.info(
             "Additional configurations initialized..."
         )
         self.logger.info(
-            "-----------------------------------------------------------------------------------"
+            "---------------------------------------------------------------------"
+        )
+        self.logger.info(
+            "Artifacts:"
         )
         self.logger.info(
             "upgrade_artifacts: %(upgrade_artifacts)s." % {
-                "upgrade_artifacts": ", ".join(upgrade_artifacts)
+                "upgrade_artifacts": ", ".join(upgrade_artifacts) if upgrade_artifacts else None
             }
         )
         self.logger.info(
@@ -307,7 +320,34 @@ class Bot(object):
             }
         )
         self.logger.info(
-            "-----------------------------------------------------------------------------------"
+            "---------------------------------------------------------------------"
+        )
+        self.logger.info(
+            "Session:"
+        )
+        self.logger.info(
+            "current_stage: %(current_stage)s" % {
+                "current_stage": self.current_stage,
+            }
+        )
+        self.logger.info(
+            "max_stage: %(max_stage)s" % {
+                "max_stage": self.max_stage,
+            }
+        )
+        self.logger.info(
+            "---------------------------------------------------------------------"
+        )
+        self.logger.info(
+            "Per Prestige:"
+        )
+        self.logger.info(
+            "master_levelled: %(master_levelled)s" % {
+                "master_levelled": self.master_levelled,
+            }
+        )
+        self.logger.info(
+            "====================================================================="
         )
 
     def schedule_functions(self):
@@ -1168,15 +1208,18 @@ class Bot(object):
         """
         Level the sword master in game.
         """
-        self.travel_to_master()
-        self.logger.info(
-            "Attempting to level the sword master in game..."
-        )
-        self.click(
-            point=self.configurations["points"]["level_master"]["level"],
-            clicks=self.configurations["parameters"]["level_master"]["level_clicks"],
-            interval=self.configurations["parameters"]["level_master"]["level_interval"],
-        )
+        if not self.master_levelled:
+            self.travel_to_master()
+            self.logger.info(
+                "Attempting to level the sword master in game..."
+            )
+            self.click(
+                point=self.configurations["points"]["level_master"]["level"],
+                clicks=self.configurations["parameters"]["level_master"]["level_clicks"],
+                interval=self.configurations["parameters"]["level_master"]["level_interval"],
+            )
+            if self.configuration["level_master_once_per_prestige"]:
+                self.master_levelled = True
 
     def level_skills(self):
         """

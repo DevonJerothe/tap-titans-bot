@@ -5,6 +5,7 @@
   "level_master_enabled": true,
   "level_master_on_start": true,
   "level_master_interval": 45,
+  "level_master_once_per_prestige": false,
   "level_skills_enabled": true,
   "level_skills_on_start": true,
   "level_skills_interval": 300,
