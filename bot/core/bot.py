@@ -1704,7 +1704,7 @@ class Bot(object):
                     )
         # Update the next artifact that will be upgraded.
         # This is done regardless of upgrade state (success/fail).
-        self.next_artifact_upgrade = next(self.upgrade_artifacts)
+        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
         self.master_levelled = False
 
         # Handle some forcing of certain functionality post prestige below.
