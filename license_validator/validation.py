@@ -279,6 +279,7 @@ class LicenseValidator(object):
         """
         dct = {
             "session": self.session,
+            "slug": self.program_name,
             "identifier": self.program_identifier,
             "key": self.license,
         }
