@@ -20,6 +20,8 @@ class Window(object):
     """
     Window objects encapsulate all of the functionality that handles background window screenshots, clicks, drags.
     """
+    FORM_CLASS = "Qt5QWindowToolSaveBits"
+
     class ClickEvent(Enum):
         left = [
             win32con.WM_LBUTTONDOWN,
@@ -59,6 +61,7 @@ class Window(object):
         Configure the given window, ensuring the expected settings are included.
         """
         self.enable_failsafe = enable_failsafe
+        self.form = Window(win32gui.FindWindowEx(None, win32gui.FindWindowEx(None, None, self.FORM_CLASS, None), self.FORM_CLASS, None))
 
     def __str__(self):
         return "%(text)s (X: %(x)s, Y: %(y)s, W: %(w)s, H: %(h)s)" % {

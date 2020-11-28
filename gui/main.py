@@ -9,6 +9,8 @@ from gui.settings import (
     MENU_BLANK_HEADER,
     MENU_START_SESSION,
     MENU_STOP_SESSION,
+    MENU_RESUME_SESSION,
+    MENU_PAUSE_SESSION,
     MENU_UPDATE_CONFIGURATION,
     MENU_UPDATE_CONFIGURATION_DEFAULTS,
     MENU_UPDATE_LICENSE,
@@ -37,6 +39,7 @@ import PySimpleGUIWx as sg
 import sentry_sdk
 import threading
 import webbrowser
+import time
 import uuid
 import os
 
@@ -53,6 +56,7 @@ class GUI(object):
         )
 
         self._stop = False
+        self._pause = False
         self._thread = None
         self._session = None
 
@@ -83,6 +87,8 @@ class GUI(object):
         self.event_map = {
             MENU_START_SESSION: self.start_session,
             MENU_STOP_SESSION: self.stop_session,
+            MENU_RESUME_SESSION: self.resume_session,
+            MENU_PAUSE_SESSION: self.pause_session,
             MENU_UPDATE_CONFIGURATION: self.update_configuration,
             MENU_UPDATE_CONFIGURATION_DEFAULTS: self.update_configuration_defaults,
             MENU_UPDATE_LICENSE: self.update_license,
@@ -162,6 +168,9 @@ class GUI(object):
                 self.menu_entry(text=MENU_START_SESSION, disabled=self._thread is not None),
                 self.menu_entry(text=MENU_STOP_SESSION, disabled=self._thread is None),
                 self.menu_entry(separator=True),
+                self.menu_entry(text=MENU_RESUME_SESSION, disabled=self._thread is None or self._pause is False),
+                self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self._thread is None or self._pause is True),
+                self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_UPDATE_CONFIGURATION),
                 self.menu_entry(text=MENU_UPDATE_CONFIGURATION_DEFAULTS),
                 self.menu_entry(text=MENU_UPDATE_LICENSE),
@@ -197,6 +206,12 @@ class GUI(object):
         """
         return self._stop
 
+    def pause_func(self):
+        """
+        Return the current interval ``_pause`` value.
+        """
+        return self._pause
+
     def start_session(self):
         """
         "start_session" event functionality.
@@ -213,6 +228,7 @@ class GUI(object):
                     "license_obj": self.license,
                     "session": self._session,
                     "stop_func": self.stop_func,
+                    "pause_func": self.pause_func,
                 },
             )
             self._thread.start()
@@ -227,6 +243,20 @@ class GUI(object):
             self._thread.join()
             self._thread = None
 
+    def pause_session(self):
+        """
+        "pause_session" functionality.
+        """
+        if self._thread is not None:
+            self._pause = True
+
+    def resume_session(self):
+        """
+        "resume_session" functionality.
+        """
+        if self._thread is not None:
+            self._pause = False
+
     def update_configuration(self, defaults=False, open_file=True):
         """
         "update_configuration" event functionality.
@@ -240,6 +270,9 @@ class GUI(object):
         )
         if not defaults:
             if open_file:
+                self.logger.info(
+                    "Opening local configuration for modification..."
+                )
                 os.startfile(
                     filepath=self.license.program_configuration_file,
                 )
@@ -251,6 +284,9 @@ class GUI(object):
         if self.yes_no_popup(
             text="Are you sure? Reverting to defaults will purge your current local configuration.",
         ):
+            self.logger.info(
+                "Reverting configurations to defaults..."
+            )
             self.update_configuration(
                 defaults=True,
                 open_file=open_file,
@@ -279,6 +315,11 @@ class GUI(object):
 
         # Update the license text that's handled
         # by the license validation utilities.
+        self.logger.info(
+            "Updating license to: %(text)s..." % {
+                "text": text,
+            }
+        )
         set_license(
             license_file=self.license.program_license_file,
             text=text,
@@ -288,6 +329,9 @@ class GUI(object):
         """
         "tools_local_data" functionality.
         """
+        self.logger.info(
+            "Opening local data directory..."
+        )
         os.startfile(
             filepath=self.license.program_directory,
         )
@@ -300,20 +344,39 @@ class GUI(object):
             log_directory=self.license.program_logs_directory,
         )
         if file:
+            self.logger.info(
+                "Opening most recent log: %(file)s: %(file)s..." % {
+                    "file": file,
+                }
+            )
             return os.startfile(
                 filepath=file,
             )
+        self.logger.info(
+            "No recent log is available to open..."
+        )
 
     def tools_flush_license(self):
         """
         "tools_flush_license" functionality.
         """
-        return self.license.flush()
+        self.logger.info(
+            "Flushing License... (%(license)s)" % {
+                "license": self.license.license,
+            }
+        )
+        self.license.flush()
+        self.logger.info(
+            "Done..."
+        )
 
     def discord(self):
         """
         "discord" event functionality.
         """
+        self.logger.info(
+            "Opening discord serer now..."
+        )
         return webbrowser.open_new_tab(
             url=self.application_discord,
         )
@@ -322,7 +385,24 @@ class GUI(object):
         """
         "exit" event functionality.
         """
+        self.logger.info(
+            "Exiting..."
+        )
         raise SystemExit
+
+    def purge_old_logs(self, days=5):
+        """
+        Purge any logs present that are older than the specified amount of days.
+        """
+        for log in os.listdir(self.license.program_logs_directory):
+            if os.path.getmtime(os.path.join(self.license.program_logs_directory, log)) < time.time() - days * 86400:
+                self.logger.info(
+                    "Purging old log file: %(log)s..." % {
+                        "log": log,
+                    }
+                )
+                if os.path.isfile(os.path.join(self.license.program_logs_directory, log)):
+                    os.remove(os.path.join(self.license.program_logs_directory, log))
 
     def run(self):
         """
@@ -344,6 +424,7 @@ class GUI(object):
                 "contact the support team for additional help."
             )
             self.logger.info("===================================================================================")
+            self.purge_old_logs()
             # Sentry can have some tags set for any issues that
             # crop up during our gui functionality...
             sentry_sdk.set_tag("package", "gui")
