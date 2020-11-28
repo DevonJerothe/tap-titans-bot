@@ -358,6 +358,10 @@ class Bot(object):
         schedule.clear()
 
         for function, data in {
+            self.check_game_state: {
+                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
+            },
             self.check_license: {
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
@@ -444,6 +448,10 @@ class Bot(object):
         Execute any functions that should be ran right away following a successful session start.
         """
         for function, data in {
+            self.check_game_state: {
+                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
+            },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
                 "execute": self.configurations["global"]["fight_boss"]["fight_boss_on_start"],
@@ -515,6 +523,63 @@ class Bot(object):
         # Raising a timeout error if the specified count is over
         # our timeout after incrementing it by one.
         raise TimeoutError()
+
+    def check_game_state(self):
+        """
+        Perform a check on the emulator to determine whether or not the game state is no longer
+        in a valid place to derive that the game is still running. The emulator may crash
+        during runtime, we can at least attempt to recover.
+        """
+        if not self.search(
+            image=[
+                # Exit.
+                self.files["large_exit"],
+                # Travel Tabs.
+                self.files["travel_master_icon"],
+                self.files["travel_heroes_icon"],
+                self.files["travel_equipment_icon"],
+                self.files["travel_pets_icon"],
+                self.files["travel_artifacts_icon"],
+                # Explicit Game State Images.
+                self.files["game_state_coin"],
+                self.files["game_state_master"],
+                self.files["game_state_relics"],
+                self.files["game_state_settings"],
+            ],
+            precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+        )[0]:
+            self.logger.info(
+                "Unable to derive current game state, attempting to recover and restart application..."
+            )
+            if not self.window.form:
+                self.logger.info(
+                    "Emulator form instance not found, terminating instance now... If you are not using a Nox emulator, "
+                    "this is most likely the reason why this process did not work, if you are using Nox and still encountering "
+                    "this error, contact the support team for additional help."
+                )
+            else:
+                self.click(
+                    window=self.window.form,
+                    point=self.configurations["points"]["check_game_state"]["home_point"],
+                    pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
+                    offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
+                )
+                found, position, image = self.search(
+                    image=self.files["application_icon"],
+                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                )
+                if found:
+                    self.logger.info(
+                        "Application icon found, attempting to open game now..."
+                    )
+                    self.click_image(
+                        image=image,
+                        position=position,
+                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+                    )
+                    return
+            raise GameStateException()
 
     def check_license(self):
         """
@@ -808,6 +873,7 @@ class Bot(object):
     def click(
         self,
         point,
+        window=None,
         clicks=1,
         interval=0.0,
         button="left",
@@ -817,8 +883,9 @@ class Bot(object):
         """
         Perform a click on the current window.
         """
-
-        self.window.click(
+        if not window:
+            window = self.window
+        window.click(
             point=point,
             clicks=clicks,
             interval=interval,
@@ -2088,6 +2155,10 @@ class Bot(object):
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
         # through our "finally" block below.
+        except GameStateException:
+            self.logger.info(
+                "A game state exception was encountered, ending session now..."
+            )
         except FailSafeException:
             self.logger.info(
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "

@@ -4,3 +4,7 @@ class WindowNotFoundError(Exception):
 
 class LicenseAuthenticationError(Exception):
     pass
+
+
+class GameStateException(Exception):
+    pass
