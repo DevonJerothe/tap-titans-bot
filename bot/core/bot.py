@@ -40,6 +40,7 @@ class Bot(object):
         session,
         license_obj,
         stop_func,
+        pause_func,
     ):
         """
         Initialize a new Bot instance.
@@ -59,6 +60,10 @@ class Bot(object):
         # A ``bot`` is initialized through some method that invokes a new thread.
         # We require an argument that should represent a function to determine when to exit.
         self.stop_func = stop_func
+        # pause_func is used to correctly handle pause/resume functionality.
+        # Function is used to determine when pause and resume should take
+        # place during runtime.
+        self.pause_func = pause_func
 
         self.session = session
         self.license = license_obj
@@ -1992,12 +1997,20 @@ class Bot(object):
             self.execute_startup_functions()
 
             while not self.stop_func():
-                # Ensure any pending scheduled jobs are executed at the beginning
-                # of our loop, each time.
-                schedule.run_pending()
-                # We'll always perform our swipe function if nothing
-                # is currently scheduled or pending.
-                self.tap()
+                if self.pause_func():
+                    # Currently paused through the GUI.
+                    # Just wait and sleep slightly in between checks.
+                    self.logger.info(
+                        "Paused..."
+                    )
+                    time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
+                else:
+                    # Ensure any pending scheduled jobs are executed at the beginning
+                    # of our loop, each time.
+                    schedule.run_pending()
+                    # We'll always perform our swipe function if nothing
+                    # is currently scheduled or pending.
+                    self.tap()
 
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
