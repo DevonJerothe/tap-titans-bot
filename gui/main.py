@@ -270,6 +270,9 @@ class GUI(object):
         )
         if not defaults:
             if open_file:
+                self.logger.info(
+                    "Opening local configuration for modification..."
+                )
                 os.startfile(
                     filepath=self.license.program_configuration_file,
                 )
@@ -281,6 +284,9 @@ class GUI(object):
         if self.yes_no_popup(
             text="Are you sure? Reverting to defaults will purge your current local configuration.",
         ):
+            self.logger.info(
+                "Reverting configurations to defaults..."
+            )
             self.update_configuration(
                 defaults=True,
                 open_file=open_file,
@@ -309,6 +315,11 @@ class GUI(object):
 
         # Update the license text that's handled
         # by the license validation utilities.
+        self.logger.info(
+            "Updating license to: %(text)s..." % {
+                "text": text,
+            }
+        )
         set_license(
             license_file=self.license.program_license_file,
             text=text,
@@ -318,6 +329,9 @@ class GUI(object):
         """
         "tools_local_data" functionality.
         """
+        self.logger.info(
+            "Opening local data directory..."
+        )
         os.startfile(
             filepath=self.license.program_directory,
         )
@@ -330,20 +344,39 @@ class GUI(object):
             log_directory=self.license.program_logs_directory,
         )
         if file:
+            self.logger.info(
+                "Opening most recent log: %(file)s: %(file)s..." % {
+                    "file": file,
+                }
+            )
             return os.startfile(
                 filepath=file,
             )
+        self.logger.info(
+            "No recent log is available to open..."
+        )
 
     def tools_flush_license(self):
         """
         "tools_flush_license" functionality.
         """
-        return self.license.flush()
+        self.logger.info(
+            "Flushing License... (%(license)s)" % {
+                "license": self.license.license,
+            }
+        )
+        self.license.flush()
+        self.logger.info(
+            "Done..."
+        )
 
     def discord(self):
         """
         "discord" event functionality.
         """
+        self.logger.info(
+            "Opening discord serer now..."
+        )
         return webbrowser.open_new_tab(
             url=self.application_discord,
         )
@@ -352,6 +385,9 @@ class GUI(object):
         """
         "exit" event functionality.
         """
+        self.logger.info(
+            "Exiting..."
+        )
         raise SystemExit
 
     def purge_old_logs(self, days=5):
