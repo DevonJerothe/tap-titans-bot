@@ -1981,6 +1981,17 @@ class Bot(object):
         timeout_drag_cnt = 0
         timeout_drag_max = self.configurations["parameters"]["travel"]["timeout_drag"]
 
+        # Always performing a quick find and click on an open prompt
+        # page exit icon (large exit).
+        while True:
+            if self.find_and_click_image(
+                image=self.files["large_exit"],
+                region=self.configurations["regions"]["travel"]["exit_area"],
+                precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                pause=self.configurations["parameters"]["travel"]["exit_pause"],
+            ):
+                continue
+            break
         try:
             while not self.search(
                 image=image,
