@@ -111,10 +111,15 @@ class Bot(object):
                 self.logger.info(
                     "Requesting license information..."
                 )
+                self.logger.info(
+                    "Note: If this is your first time running a session, this process could take a while, please don't "
+                    "cancel or attempt to manually close your session while this is running... If this is taking a very "
+                    "long time, you can hard exit the application and contact support for additional help."
+                )
                 self.logger.debug(
                     self.license.license
                 )
-                self.license.retrieve()
+                self.license.retrieve(logger=self.logger)
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
