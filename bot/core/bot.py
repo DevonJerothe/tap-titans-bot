@@ -1463,26 +1463,39 @@ class Bot(object):
                 False,
                 False,
             )
+            timeout_heroes_dupe_cnt = 0
+            timeout_heroes_dupe_max = self.configurations["parameters"]["level_heroes"]["timeout_heroes_dupe"]
+
             while not dupe:
-                if callback:
-                    callback()
-                self.drag(
-                    start=self.configurations["points"]["travel"]["scroll"]["drag_top" if top else "drag_bottom"],
-                    end=self.configurations["points"]["travel"]["scroll"]["drag_bottom" if top else "drag_top"],
-                    pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                )
-                if stop_on_max and self.search(
-                    image=self.files["heroes_max_level"],
-                    region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
-                    precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
-                )[0]:
-                    # Breaking early since if we stop early, we can skip
-                    # directly to the callbacks (if passed in).
+                try:
+                    if callback:
+                        callback()
+                    self.drag(
+                        start=self.configurations["points"]["travel"]["scroll"]["drag_top" if top else "drag_bottom"],
+                        end=self.configurations["points"]["travel"]["scroll"]["drag_bottom" if top else "drag_top"],
+                        pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                    )
+                    if stop_on_max and self.search(
+                        image=self.files["heroes_max_level"],
+                        region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
+                        precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
+                    )[0]:
+                        # Breaking early since if we stop early, we can skip
+                        # directly to the callbacks (if passed in).
+                        break
+                    img, dupe = self.duplicates(
+                        image=img,
+                        region=self.configurations["regions"]["travel"]["duplicate_area"],
+                    )
+                    timeout_heroes_dupe_cnt = self.handle_timeout(
+                        count=timeout_heroes_dupe_cnt,
+                        timeout=timeout_heroes_dupe_max,
+                    )
+                except TimeoutError:
+                    self.logger.info(
+                        "Max level hero could not be found, ending check now..."
+                    )
                     break
-                img, dupe = self.duplicates(
-                    image=img,
-                    region=self.configurations["regions"]["travel"]["duplicate_area"],
-                )
 
         self.travel_to_heroes(collapsed=False)
         self.logger.info(
