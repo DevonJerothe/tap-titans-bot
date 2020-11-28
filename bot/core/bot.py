@@ -989,10 +989,11 @@ class Bot(object):
                 pause=self.configurations["parameters"]["parse_max_stage"]["master_icon_pause"],
             )
             results = []
+            loops = self.configurations["parameters"]["parse_max_stage"]["result_loops"]
             # Loop and gather results about the max stage...
             # We do this multiple times to try and stave off any false
             # positives, we'll use the most common result as our final.
-            for i in range(self.configurations["parameters"]["parse_max_stage"]["result_loops"]):
+            for i in range(loops):
                 result = pytesseract.image_to_string(
                     image=self.process(
                         region=self.configurations["regions"]["parse_max_stage"]["max_stage_area"],
@@ -1001,6 +1002,13 @@ class Bot(object):
                         invert=self.configurations["parameters"]["parse_max_stage"]["invert"],
                     ),
                     config="--psm 7 --oem 0 nobatch",
+                )
+                self.logger.debug(
+                    "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                        "loop": i,
+                        "loops": loops,
+                        "result": result
+                    }
                 )
                 result = "".join(filter(str.isdigit, result))
                 result = int(result) if result else None
@@ -1037,10 +1045,11 @@ class Bot(object):
             "Attempting to parse current stage from game..."
         )
         results = []
+        loops = self.configurations["parameters"]["parse_current_stage"]["result_loops"]
         # Loop and gather results about the current stage...
         # We do this multiple times to try and stave off any false
         # positives, we'll use the most common result as our final.
-        for i in range(self.configurations["parameters"]["parse_current_stage"]["result_loops"]):
+        for i in range(loops):
             result = pytesseract.image_to_string(
                 image=self.process(
                     region=self.configurations["regions"]["parse_current_stage"]["current_stage_area"],
@@ -1049,6 +1058,13 @@ class Bot(object):
                     invert=self.configurations["parameters"]["parse_current_stage"]["invert"],
                 ),
                 config="--psm 7 --oem 0 nobatch",
+            )
+            self.logger.debug(
+                "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "loop": i,
+                    "loops": loops,
+                    "result": result
+                }
             )
             result = "".join(filter(str.isdigit, result))
             result = int(result) if result else None
