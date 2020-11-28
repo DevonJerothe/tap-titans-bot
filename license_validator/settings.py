@@ -57,10 +57,10 @@ LOCAL_DATA_DEPENDENCIES_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "dependencie
 LOCAL_DATA_LOGS_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "logs")
 # We'll also store our configurations locally so that a user can stop/start
 # a program without retrieving configurations every time.
-LOCAL_DATA_CONFIGURATIONS_FILE = path.join(LOCAL_DATA_DIRECTORY, "configurations.json")
+LOCAL_DATA_CONFIGURATIONS_FILE = path.join(LOCAL_DATA_DIRECTORY, "configurations.titan")
 # The configuration file itself should be populated with a default configuration
 # (handled elsewhere), and allow for configurations to be specified by the user.
-LOCAL_DATA_CONFIGURATION_FILE = path.join(LOCAL_DATA_DIRECTORY, "configuration.json")
+LOCAL_DATA_CONFIGURATION_FILE = path.join(LOCAL_DATA_DIRECTORY, "configuration.txt")
 # The license information should be stored in our local data directory
 # in a proper text file.
 LOCAL_DATA_LICENSE_FILE = path.join(LOCAL_DATA_DIRECTORY, "license.txt")
