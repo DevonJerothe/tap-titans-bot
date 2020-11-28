@@ -8,6 +8,14 @@
   "level_skills_enabled": true,
   "level_skills_on_start": true,
   "level_skills_interval": 300,
+  "level_skills_level_amount": {
+    "heavenly_strike": 30,
+    "deadly_strike": 30,
+    "hand_of_midas": 30,
+    "fire_sword": 30,
+    "war_cry": 30,
+    "shadow_clone": 30
+  },
   "activate_skills_enabled": true,
   "activate_skills_on_start": true,
   "activate_skills_interval": 30,
