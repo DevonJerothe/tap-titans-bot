@@ -47,6 +47,7 @@ def set_license(
 def set_files(
     files_directory,
     files,
+    logger=None,
 ):
     """
     Update the available images in the directory specified with the images passed in.
@@ -60,6 +61,12 @@ def set_files(
             "version_path": version_path,
             "name": file["name"],
         }
+        if logger:
+            logger.info(
+                "Writing file: \"%(file_path)s\"..." % {
+                    "file_path": file_path,
+                }
+            )
         # Ensure the version directory is present for the image
         # that we will be setting up.
         if not os.path.exists(version_path):
@@ -74,18 +81,23 @@ def set_files(
 def set_dependencies(
     dependencies_directory,
     dependencies,
+    logger=None,
 ):
     for dependency in dependencies:
         file_path = "%(dependencies_directory)s/%(name)s" % {
             "dependencies_directory": dependencies_directory,
             "name": dependency["name"],
         }
-
+        if logger:
+            logger.info(
+                "Writing dependency: \"%(file_path)s\"..." % {
+                    "file_path": file_path,
+                }
+            )
         # Generate the file itself that contains our dependency.
         # Dependencies are expected to come in a zip format.
         with open(file_path, mode="wb") as f:
             f.write(base64.b64decode(dependency["content"]))
-
         # Ensure dependency is extracted properly
         # after the file is created.
         with zipfile.ZipFile(file_path, mode="r") as zip_ref:
@@ -95,9 +107,14 @@ def set_dependencies(
 def set_configurations(
     configurations_file,
     content,
+    logger=None,
 ):
     """
     Update the specified configurations file with the content specified.
     """
     with open(configurations_file, mode="w") as file:
+        if logger:
+            logger.info(
+                "Writing global configurations..."
+            )
         file.write(content)

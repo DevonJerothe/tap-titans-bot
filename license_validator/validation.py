@@ -130,8 +130,8 @@ class LicenseValidator(object):
             "url": url,
             "data": data,
             "timeout": (
-                10,  # Connection.
-                30,  # Read.
+                60,   # Connection.
+                600,  # Read.
             ),
         }
         try:
@@ -159,7 +159,7 @@ class LicenseValidator(object):
 
         return response
 
-    def _retrieve(self, url, include_files=True, set_data=True):
+    def _retrieve(self, url, include_files=True, set_data=True, logger=None):
         """
         Utility function to handle retrieving any license based urls.
 
@@ -180,18 +180,21 @@ class LicenseValidator(object):
             set_files(
                 files_directory=self.program_files_directory,
                 files=self.license_data["program"]["files"],
+                logger=logger,
             )
             set_dependencies(
                 dependencies_directory=self.program_dependencies_directory,
                 dependencies=self.license_data["program"]["dependencies"],
+                logger=logger,
             )
             set_configurations(
                 configurations_file=self.program_configurations_file,
                 content=self.license_data["program"]["configurations"],
+                logger=logger,
             )
         return response
 
-    def retrieve(self, include_files=True, set_data=True):
+    def retrieve(self, include_files=True, set_data=True, logger=None):
         """
         Retrieve the current license.
 
@@ -206,6 +209,7 @@ class LicenseValidator(object):
             url=self.program_retrieve_url,
             include_files=include_files,
             set_data=set_data,
+            logger=logger,
         )
 
     def online(self):
