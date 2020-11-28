@@ -9,6 +9,8 @@ from gui.settings import (
     MENU_BLANK_HEADER,
     MENU_START_SESSION,
     MENU_STOP_SESSION,
+    MENU_RESUME_SESSION,
+    MENU_PAUSE_SESSION,
     MENU_UPDATE_CONFIGURATION,
     MENU_UPDATE_CONFIGURATION_DEFAULTS,
     MENU_UPDATE_LICENSE,
@@ -54,6 +56,7 @@ class GUI(object):
         )
 
         self._stop = False
+        self._pause = False
         self._thread = None
         self._session = None
 
@@ -84,6 +87,8 @@ class GUI(object):
         self.event_map = {
             MENU_START_SESSION: self.start_session,
             MENU_STOP_SESSION: self.stop_session,
+            MENU_RESUME_SESSION: self.resume_session,
+            MENU_PAUSE_SESSION: self.pause_session,
             MENU_UPDATE_CONFIGURATION: self.update_configuration,
             MENU_UPDATE_CONFIGURATION_DEFAULTS: self.update_configuration_defaults,
             MENU_UPDATE_LICENSE: self.update_license,
@@ -163,6 +168,9 @@ class GUI(object):
                 self.menu_entry(text=MENU_START_SESSION, disabled=self._thread is not None),
                 self.menu_entry(text=MENU_STOP_SESSION, disabled=self._thread is None),
                 self.menu_entry(separator=True),
+                self.menu_entry(text=MENU_RESUME_SESSION, disabled=self._thread is None or self._pause is False),
+                self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self._thread is None or self._pause is True),
+                self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_UPDATE_CONFIGURATION),
                 self.menu_entry(text=MENU_UPDATE_CONFIGURATION_DEFAULTS),
                 self.menu_entry(text=MENU_UPDATE_LICENSE),
@@ -198,6 +206,12 @@ class GUI(object):
         """
         return self._stop
 
+    def pause_func(self):
+        """
+        Return the current interval ``_pause`` value.
+        """
+        return self._pause
+
     def start_session(self):
         """
         "start_session" event functionality.
@@ -214,6 +228,7 @@ class GUI(object):
                     "license_obj": self.license,
                     "session": self._session,
                     "stop_func": self.stop_func,
+                    "pause_func": self.pause_func,
                 },
             )
             self._thread.start()
@@ -227,6 +242,20 @@ class GUI(object):
             self._session = None
             self._thread.join()
             self._thread = None
+
+    def pause_session(self):
+        """
+        "pause_session" functionality.
+        """
+        if self._thread is not None:
+            self._pause = True
+
+    def resume_session(self):
+        """
+        "resume_session" functionality.
+        """
+        if self._thread is not None:
+            self._pause = False
 
     def update_configuration(self, defaults=False, open_file=True):
         """
