@@ -1199,9 +1199,12 @@ class Bot(object):
                         return
                     self.find_and_click_image(
                         image=self.files["fairies_collect"],
-                        region=self.configurations["regions"]["fairies"]["collect_area"],
-                        precision=self.configurations["parameters"]["fairies"]["collect_precision"],
-                        pause=self.configurations["parameters"]["fairies"]["collect_pause"],
+                        region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
+                        precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
+                        pause=self.configurations["parameters"]["fairies"]["pi_hole_collect_pause"],
+                    )
+                    self.logger.info(
+                        "Fairy ad has been collected through ad blocking..."
                     )
                 else:
                     # Ads can not be collected for the user.
