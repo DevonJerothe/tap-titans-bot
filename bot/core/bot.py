@@ -356,7 +356,7 @@ class Bot(object):
 
         for function, data in {
             self.check_game_state: {
-                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "enabled": self.configuration["crash_recovery_enabled"],
                 "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
             },
             self.check_license: {
@@ -450,7 +450,7 @@ class Bot(object):
         """
         for function, data in {
             self.check_game_state: {
-                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "enabled": self.configuration["crash_recovery_enabled"],
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
             self.fight_boss: {
