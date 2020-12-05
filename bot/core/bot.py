@@ -1029,14 +1029,21 @@ class Bot(object):
                     config="--psm 7 --oem 0 nobatch",
                 )
                 self.logger.debug(
-                    "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
                         "loop": i,
                         "loops": loops,
-                        "result": result
+                        "result": result.encode("ascii", "replace"),
                     }
                 )
                 result = "".join(filter(str.isdigit, result))
                 result = int(result) if result else None
+                self.logger.debug(
+                    "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                        "loop": i,
+                        "loops": loops,
+                        "result": result,
+                    }
+                )
                 # Ensure result is a valid amount, based on hard configurations
                 # and user configurations (if specified).
                 parse_min = self.configuration["stage_parsing_minimum"] or -100000
@@ -1046,14 +1053,19 @@ class Bot(object):
                     and parse_min <= result <= parse_max
                     and result <= self.configurations["global"]["game"]["max_stage"]
                 ):
+                    self.logger.debug(
+                        "Adding result: %(result)s to list of results..." % {
+                            "result": result,
+                        }
+                    )
                     results.append(result)
+            self.logger.debug(
+                "Calculating most common result from parsed results: %(results)s" % {
+                    "results": results,
+                }
+            )
             self.max_stage = most_common_result(
                 results=results,
-            )
-            self.logger.info(
-                "Maximum Stage: %(maximum_stage)s..." % {
-                    "maximum_stage": self.max_stage,
-                }
             )
             self.find_and_click_image(
                 image=self.files["large_exit"],
@@ -1061,6 +1073,11 @@ class Bot(object):
                 precision=self.configurations["parameters"]["parse_max_stage"]["exit_precision"],
                 pause=self.configurations["parameters"]["parse_max_stage"]["exit_pause"],
             )
+        self.logger.info(
+            "Maximum Stage: %(maximum_stage)s..." % {
+                "maximum_stage": self.max_stage,
+            }
+        )
 
     def parse_current_stage(self):
         """
@@ -1086,14 +1103,21 @@ class Bot(object):
                 config="--psm 7 --oem 0 nobatch",
             )
             self.logger.debug(
-                "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
                     "loop": i,
                     "loops": loops,
-                    "result": result
+                    "result": result.encode("ascii", "replace"),
                 }
             )
             result = "".join(filter(str.isdigit, result))
             result = int(result) if result else None
+            self.logger.debug(
+                "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "loop": i,
+                    "loops": loops,
+                    "result": result,
+                }
+            )
             # Ensure result is a valid amount, based on hard configurations
             # and user configurations (if specified).
             parse_min = self.configuration["stage_parsing_minimum"] or -100000
@@ -1103,7 +1127,17 @@ class Bot(object):
                 and parse_min <= result <= parse_max
                 and result <= self.configurations["global"]["game"]["max_stage"]
             ):
+                self.logger.debug(
+                    "Adding result: %(result)s to list of results..." % {
+                        "result": result,
+                    }
+                )
                 results.append(result)
+        self.logger.debug(
+            "Calculating most common result from parsed results: %(results)s" % {
+                "results": results,
+            }
+        )
         self.current_stage = most_common_result(
             results=results,
         )
