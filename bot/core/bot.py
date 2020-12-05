@@ -8,6 +8,7 @@ from license_validator.exceptions import (
 
 from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.imagesearch import image_search_area, click_image
+from bot.core.imagehash import compare_images
 from bot.core.decorators import event
 from bot.core.exceptions import LicenseAuthenticationError, GameStateException
 from bot.core.utilities import (
@@ -23,9 +24,9 @@ from pytesseract import pytesseract
 from PIL import Image
 
 import sentry_sdk
-import imagehash
 import schedule
 import random
+import copy
 import numpy
 import time
 import json
@@ -851,10 +852,10 @@ class Bot(object):
             # contain our proper image and valid dupe status.
             return image, False
         latest = self.snapshot(region=region)
-        return latest, (
-            imagehash.average_hash(image=image) -
-            imagehash.average_hash(image=latest)
-        ) < cutoff
+        return latest, compare_images(
+            image_one=image,
+            image_two=latest,
+        )
 
     def point_is_color(
         self,
