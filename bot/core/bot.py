@@ -1405,13 +1405,19 @@ class Bot(object):
             "Attempting to level all skills in game..."
         )
         for skill, region, point, max_point, clicks in zip(
-            self.configurations["global"]["level_skills"]["skills"],
+            self.configurations["global"]["skills"]["skills"],
             self.configurations["regions"]["level_skills"]["skill_regions"],
             self.configurations["points"]["level_skills"]["skill_points"],
             self.configurations["points"]["level_skills"]["max_points"],
-            [level for level in self.configuration["level_skills_level_amount"].values()],
+            [
+                level for level in [
+                    self.configuration["%(skill)s_level_amount" % {
+                        "skill": skill,
+                    }] for skill in self.configurations["global"]["skills"]["skills"]
+                ]
+            ],
         ):
-            if clicks > 0 and not self.search(
+            if clicks != "disable" and not self.search(
                 image=[
                     self.files["level_skills_max_level"],
                     self.files["level_skills_cancel_active_skill"],
@@ -1419,27 +1425,32 @@ class Bot(object):
                 region=region,
                 precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
             )[0]:
+                # Actually level the skill in question.
+                # Regardless of max or amount specification.
                 self.logger.info(
                     "Levelling %(skill)s now..." % {
                         "skill": skill,
                     }
                 )
-                if clicks < self.configurations["parameters"]["level_skills"]["skills_max_level"]:
+                if clicks != "max":
+                    # Just level the skill the specified amount of clicks.
+                    # 1-35 most likely if frontend enforces values proper.
                     self.click(
                         point=point,
-                        clicks=clicks,
+                        clicks=int(clicks),
                         interval=self.configurations["parameters"]["level_skills"]["level_clicks_interval"],
                         pause=self.configurations["parameters"]["level_skills"]["level_clicks_pause"],
                     )
-                # Try to max out the skill.
                 else:
+                    # Attempt to max the skill out using the "level X"
+                    # option that pops up when a user levels a skill.
                     self.click(
                         point=point,
                         pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
                     )
                     if self.point_is_color_range(
-                        point=max_point,
-                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                            point=max_point,
+                            color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
                     ):
                         self.click(
                             point=max_point,
