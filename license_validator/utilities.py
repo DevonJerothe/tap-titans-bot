@@ -102,19 +102,3 @@ def set_dependencies(
         # after the file is created.
         with zipfile.ZipFile(file_path, mode="r") as zip_ref:
             zip_ref.extractall(path=dependencies_directory)
-
-
-def set_configurations(
-    configurations_file,
-    content,
-    logger=None,
-):
-    """
-    Update the specified configurations file with the content specified.
-    """
-    with open(configurations_file, mode="w") as file:
-        if logger:
-            logger.info(
-                "Writing global configurations..."
-            )
-        file.write(content)
