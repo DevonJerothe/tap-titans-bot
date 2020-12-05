@@ -10,14 +10,12 @@ from license_validator.settings import (
     LOCAL_DATA_FILES_DIRECTORY,
     LOCAL_DATA_DEPENDENCIES_DIRECTORY,
     LOCAL_DATA_LOGS_DIRECTORY,
-    LOCAL_DATA_CONFIGURATIONS_FILE,
-    LOCAL_DATA_CONFIGURATION_FILE,
     LOCAL_DATA_LICENSE_FILE,
+    TEMPLATE_CONFIGURATIONS,
 )
 from license_validator.utilities import (
     get_license,
     set_files,
-    set_configurations,
     set_dependencies,
 )
 from license_validator.exceptions import (
@@ -52,6 +50,7 @@ class LicenseValidator(object):
         program_offline_url=None,
         program_flush_url=None,
         program_event_url=None,
+        program_configurations_template=None
     ):
         """
         Initializing will setup and find certain variables and/or system files, the license key
@@ -70,9 +69,9 @@ class LicenseValidator(object):
         self.program_files_directory = LOCAL_DATA_FILES_DIRECTORY
         self.program_dependencies_directory = LOCAL_DATA_DEPENDENCIES_DIRECTORY
         self.program_logs_directory = LOCAL_DATA_LOGS_DIRECTORY
-        self.program_configurations_file = LOCAL_DATA_CONFIGURATIONS_FILE
-        self.program_configuration_file = LOCAL_DATA_CONFIGURATION_FILE
         self.program_license_file = LOCAL_DATA_LICENSE_FILE
+
+        self.program_configurations_template = program_configurations_template or TEMPLATE_CONFIGURATIONS
 
         # Ensure local data directories are at least generated
         # if they aren't already.
@@ -116,8 +115,6 @@ class LicenseValidator(object):
         # Local data files should come after our directories are
         # guaranteed to be available. Opening them in write mode to create.
         for file in [
-            self.program_configurations_file,
-            self.program_configuration_file,
             self.program_license_file,
         ]:
             if not os.path.exists(file):
@@ -159,7 +156,7 @@ class LicenseValidator(object):
 
         return response
 
-    def _retrieve(self, url, include_files=True, set_data=True, logger=None):
+    def _retrieve(self, url, include_files=True, set_data=True, logger=None, update_license_data=True):
         """
         Utility function to handle retrieving any license based urls.
 
@@ -174,8 +171,8 @@ class LicenseValidator(object):
 
         # Convert response to json data equivalent.
         # We now have access to all license data needed.
-        self.license_data = response.json()
-
+        if update_license_data:
+            self.license_data = response.json()
         if set_data:
             set_files(
                 files_directory=self.program_files_directory,
@@ -187,14 +184,9 @@ class LicenseValidator(object):
                 dependencies=self.license_data["program"]["dependencies"],
                 logger=logger,
             )
-            set_configurations(
-                configurations_file=self.program_configurations_file,
-                content=self.license_data["program"]["configurations"],
-                logger=logger,
-            )
         return response
 
-    def retrieve(self, include_files=True, set_data=True, logger=None):
+    def retrieve(self, include_files=True, set_data=True, update_license_data=True, logger=None):
         """
         Retrieve the current license.
 
@@ -209,6 +201,7 @@ class LicenseValidator(object):
             url=self.program_retrieve_url,
             include_files=include_files,
             set_data=set_data,
+            update_license_data=update_license_data,
             logger=logger,
         )
 
@@ -223,6 +216,7 @@ class LicenseValidator(object):
                 url=self.program_online_url,
                 include_files=False,
                 set_data=False,
+                update_license_data=False,
             )
 
     def offline(self):
@@ -237,6 +231,7 @@ class LicenseValidator(object):
                     url=self.program_offline_url,
                     include_files=False,
                     set_data=False,
+                    update_license_data=False,
                 )
             except Exception:
                 pass
@@ -253,6 +248,7 @@ class LicenseValidator(object):
                     url=self.program_flush_url,
                     include_files=False,
                     set_data=False,
+                    update_license_data=False,
                 )
             except Exception:
                 pass
