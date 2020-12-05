@@ -535,56 +535,81 @@ class Bot(object):
         in a valid place to derive that the game is still running. The emulator may crash
         during runtime, we can at least attempt to recover.
         """
-        if not self.search(
-            image=[
-                # Exit.
-                self.files["large_exit"],
-                # Travel Tabs.
-                self.files["travel_master_icon"],
-                self.files["travel_heroes_icon"],
-                self.files["travel_equipment_icon"],
-                self.files["travel_pets_icon"],
-                self.files["travel_artifacts_icon"],
-                # Explicit Game State Images.
-                self.files["game_state_coin"],
-                self.files["game_state_master"],
-                self.files["game_state_relics"],
-                self.files["game_state_settings"],
-            ],
-            precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
-        )[0]:
-            self.logger.info(
-                "Unable to derive current game state, attempting to recover and restart application..."
-            )
-            if not self.window.form:
+        timeout_check_game_state_cnt = 0
+        timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
+
+        # Attempting to travel to the main screen
+        # in game. This will for sure have our
+        # game state icons, and likely some of the
+        # travel icons.
+        self.travel_to_main_screen()
+
+        while True:
+            try:
+                if not self.search(
+                    image=[
+                        # Exit.
+                        self.files["large_exit"],
+                        # Misc.
+                        self.files["fight_boss_icon"],
+                        self.files["leave_boss_icon"],
+                        # Travel Tabs.
+                        self.files["travel_master_icon"],
+                        self.files["travel_heroes_icon"],
+                        self.files["travel_equipment_icon"],
+                        self.files["travel_pets_icon"],
+                        self.files["travel_artifacts_icon"],
+                        # Explicit Game State Images.
+                        self.files["game_state_coin"],
+                        self.files["game_state_master"],
+                        self.files["game_state_relics"],
+                        self.files["game_state_settings"],
+                    ],
+                    precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+                )[0]:
+                    timeout_check_game_state_cnt = self.handle_timeout(
+                        count=timeout_check_game_state_cnt,
+                        timeout=timeout_check_game_state_max,
+                    )
+                    # Pause slightly in between our checks...
+                    # We don't wanna check too quickly.
+                    time.sleep(self.configurations["parameters"]["check_game_state"]["check_game_state_pause"])
+                else:
+                    # Game state is fine, exit with no errors.
+                    break
+            except TimeoutError:
                 self.logger.info(
-                    "Emulator form instance not found, terminating instance now... If you are not using a Nox emulator, "
-                    "this is most likely the reason why this process did not work, if you are using Nox and still encountering "
-                    "this error, contact the support team for additional help."
+                    "Unable to derive current game state, attempting to recover and restart application..."
                 )
-            else:
-                self.click(
-                    window=self.window.form,
-                    point=self.configurations["points"]["check_game_state"]["home_point"],
-                    pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
-                    offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
-                )
-                found, position, image = self.search(
-                    image=self.files["application_icon"],
-                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
-                )
-                if found:
+                if not self.window.form:
                     self.logger.info(
-                        "Application icon found, attempting to open game now..."
+                        "Emulator \"form\" instance not found, terminating instance now... If you are not using a Nox emulator, "
+                        "this is the most likely reason why this process did not work, if you are using Nox and still encountering "
+                        "this error, contact the support team for additional help."
                     )
-                    self.click_image(
-                        image=image,
-                        position=position,
-                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+                else:
+                    self.click(
+                        window=self.window.form,
+                        point=self.configurations["points"]["check_game_state"]["home_point"],
+                        pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
+                        offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
                     )
-                    return
-            raise GameStateException()
+                    found, position, image = self.search(
+                        image=self.files["application_icon"],
+                        region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+                        precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                    )
+                    if found:
+                        self.logger.info(
+                            "Application icon found, attempting to open game now..."
+                        )
+                        self.click_image(
+                            image=image,
+                            position=position,
+                            pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+                        )
+                        return
+                raise GameStateException()
 
     def check_license(self):
         """
