@@ -8,6 +8,7 @@ from license_validator.exceptions import (
 
 from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.imagesearch import image_search_area, click_image
+from bot.core.imagehash import compare_images
 from bot.core.decorators import event
 from bot.core.exceptions import LicenseAuthenticationError, GameStateException
 from bot.core.utilities import (
@@ -23,9 +24,9 @@ from pytesseract import pytesseract
 from PIL import Image
 
 import sentry_sdk
-import imagehash
 import schedule
 import random
+import copy
 import numpy
 import time
 import json
@@ -85,29 +86,6 @@ class Bot(object):
             session_id=self.session,
         )
 
-        # Handle some of the local configuration functionality early (prior to license checks)
-        # so that we can make sure the window is actually opened before doing anything else.
-        self.configure_configuration()
-
-        try:
-            self.handle = WindowHandler()
-            self.window = self.handle.filter_first(
-                filter_title=self.configuration["emulator_window"],
-            )
-            self.window.configure(
-                enable_failsafe=self.configuration["failsafe_enabled"],
-            )
-        except WindowNotFoundError:
-            self.logger.info(
-                "Unable to find the configured window (%(window)s), make sure the window is visible and try again. "
-                "Your window should also be at the specified size (480x800x160DPI). If you're having trouble "
-                "finding your window, you can use the multi instance manager on your emulator to use a custom window "
-                "title instead of the default." % {
-                    "window": self.configuration["emulator_window"],
-                },
-            )
-            raise SystemExit
-
         # Begin License Validation...
         # Any of the below failures should exit us out of the
         # session that is being initialized.
@@ -128,9 +106,6 @@ class Bot(object):
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
-                )
-                self.logger.debug(
-                    self.license.license_data
                 )
             except TimeoutError:
                 self.logger.info(
@@ -195,7 +170,28 @@ class Bot(object):
         # configuration values should be available for parsing.
         self.configure_dependencies()
         self.configure_files()
+        self.configure_configuration()
         self.configure_configurations()
+
+        try:
+            self.handle = WindowHandler()
+            self.window = self.handle.filter_first(
+                filter_title=self.configuration["emulator_window"],
+            )
+            self.window.configure(
+                enable_failsafe=self.configuration["failsafe_enabled"],
+            )
+        except WindowNotFoundError:
+            self.logger.info(
+                "Unable to find the configured window (%(window)s), make sure the window is visible and try again. "
+                "Your window should also be at the specified size (480x800x160DPI). If you're having trouble "
+                "finding your window, you can use the multi instance manager on your emulator to use a custom window "
+                "title instead of the default." % {
+                    "window": self.configuration["emulator_window"],
+                },
+            )
+            raise SystemExit
+
         # Begin running the bot once all dependency/configuration/files/variables
         # have been handled and are ready to go.
         self.run()
@@ -207,10 +203,12 @@ class Bot(object):
         self.logger.info("Configuring local configuration...")
         # The settings housed here are configurable by the user locally.
         # The file should just be loaded and placed into our configuration.
-        with open(self.license.program_configuration_file, mode="r") as file:
-            self.configuration = json.loads(file.read())
+        self.configuration = self.license.license_data["configuration"]
         self.logger.debug(
             "Local Configuration: Loaded..."
+        )
+        self.logger.debug(
+            self.configuration
         )
 
     def configure_dependencies(self):
@@ -256,8 +254,7 @@ class Bot(object):
         self.logger.info("Configuring configurations...")
         # Globally available and any configurations retrieved through our
         # license can be handled here.
-        with open(self.license.program_configurations_file, mode="r") as file:
-            self.configurations = json.loads(decrypt_secret(file.read()))
+        self.configurations = json.loads(decrypt_secret(self.license.license_data["program"]["configurations"]))
         # Hide the global configurations being used...
         # Knowing that they're loaded is fine here.
         self.logger.debug(
@@ -276,7 +273,15 @@ class Bot(object):
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
         }
-        tiers = [tier for tier, enabled in self.configuration["artifacts_upgrade_tier"].items() if enabled]
+
+        tiers = [
+            tier for tier, enabled in [
+                ("s", self.configuration["artifacts_upgrade_tier_s"]),
+                ("a", self.configuration["artifacts_upgrade_tier_a"]),
+                ("b", self.configuration["artifacts_upgrade_tier_b"]),
+                ("c", self.configuration["artifacts_upgrade_tier_c"]),
+            ] if enabled
+        ]
         upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
         if self.configuration["artifacts_upgrade_artifact"]:
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
@@ -292,61 +297,6 @@ class Bot(object):
         # PER PRESTIGE INFO.
         self.master_levelled = False
 
-        # Log some information about the additional configurations
-        # that have been parsed out.
-        self.logger.info(
-            "====================================================================="
-        )
-        self.logger.info(
-            "Additional configurations initialized..."
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Artifacts:"
-        )
-        self.logger.info(
-            "upgrade_artifacts: %(upgrade_artifacts)s." % {
-                "upgrade_artifacts": ", ".join(upgrade_artifacts) if upgrade_artifacts else None
-            }
-        )
-        self.logger.info(
-            "next_artifact_upgrade: %(next_artifact_upgrade)s." % {
-                "next_artifact_upgrade": self.next_artifact_upgrade,
-            }
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Session:"
-        )
-        self.logger.info(
-            "current_stage: %(current_stage)s" % {
-                "current_stage": self.current_stage,
-            }
-        )
-        self.logger.info(
-            "max_stage: %(max_stage)s" % {
-                "max_stage": self.max_stage,
-            }
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Per Prestige:"
-        )
-        self.logger.info(
-            "master_levelled: %(master_levelled)s" % {
-                "master_levelled": self.master_levelled,
-            }
-        )
-        self.logger.info(
-            "====================================================================="
-        )
-
     def schedule_functions(self):
         """
         Loop through each available function used during runtime, setting up
@@ -356,7 +306,7 @@ class Bot(object):
 
         for function, data in {
             self.check_game_state: {
-                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "enabled": self.configuration["crash_recovery_enabled"],
                 "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
             },
             self.check_license: {
@@ -450,7 +400,7 @@ class Bot(object):
         """
         for function, data in {
             self.check_game_state: {
-                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
+                "enabled": self.configuration["crash_recovery_enabled"],
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
             self.fight_boss: {
@@ -535,56 +485,81 @@ class Bot(object):
         in a valid place to derive that the game is still running. The emulator may crash
         during runtime, we can at least attempt to recover.
         """
-        if not self.search(
-            image=[
-                # Exit.
-                self.files["large_exit"],
-                # Travel Tabs.
-                self.files["travel_master_icon"],
-                self.files["travel_heroes_icon"],
-                self.files["travel_equipment_icon"],
-                self.files["travel_pets_icon"],
-                self.files["travel_artifacts_icon"],
-                # Explicit Game State Images.
-                self.files["game_state_coin"],
-                self.files["game_state_master"],
-                self.files["game_state_relics"],
-                self.files["game_state_settings"],
-            ],
-            precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
-        )[0]:
-            self.logger.info(
-                "Unable to derive current game state, attempting to recover and restart application..."
-            )
-            if not self.window.form:
+        timeout_check_game_state_cnt = 0
+        timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
+
+        # Attempting to travel to the main screen
+        # in game. This will for sure have our
+        # game state icons, and likely some of the
+        # travel icons.
+        self.travel_to_main_screen()
+
+        while True:
+            try:
+                if not self.search(
+                    image=[
+                        # Exit.
+                        self.files["large_exit"],
+                        # Misc.
+                        self.files["fight_boss_icon"],
+                        self.files["leave_boss_icon"],
+                        # Travel Tabs.
+                        self.files["travel_master_icon"],
+                        self.files["travel_heroes_icon"],
+                        self.files["travel_equipment_icon"],
+                        self.files["travel_pets_icon"],
+                        self.files["travel_artifacts_icon"],
+                        # Explicit Game State Images.
+                        self.files["game_state_coin"],
+                        self.files["game_state_master"],
+                        self.files["game_state_relics"],
+                        self.files["game_state_settings"],
+                    ],
+                    precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+                )[0]:
+                    timeout_check_game_state_cnt = self.handle_timeout(
+                        count=timeout_check_game_state_cnt,
+                        timeout=timeout_check_game_state_max,
+                    )
+                    # Pause slightly in between our checks...
+                    # We don't wanna check too quickly.
+                    time.sleep(self.configurations["parameters"]["check_game_state"]["check_game_state_pause"])
+                else:
+                    # Game state is fine, exit with no errors.
+                    break
+            except TimeoutError:
                 self.logger.info(
-                    "Emulator form instance not found, terminating instance now... If you are not using a Nox emulator, "
-                    "this is most likely the reason why this process did not work, if you are using Nox and still encountering "
-                    "this error, contact the support team for additional help."
+                    "Unable to derive current game state, attempting to recover and restart application..."
                 )
-            else:
-                self.click(
-                    window=self.window.form,
-                    point=self.configurations["points"]["check_game_state"]["home_point"],
-                    pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
-                    offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
-                )
-                found, position, image = self.search(
-                    image=self.files["application_icon"],
-                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
-                )
-                if found:
+                if not self.window.form:
                     self.logger.info(
-                        "Application icon found, attempting to open game now..."
+                        "Emulator \"form\" instance not found, terminating instance now... If you are not using a Nox emulator, "
+                        "this is the most likely reason why this process did not work, if you are using Nox and still encountering "
+                        "this error, contact the support team for additional help."
                     )
-                    self.click_image(
-                        image=image,
-                        position=position,
-                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+                else:
+                    self.click(
+                        window=self.window.form,
+                        point=self.configurations["points"]["check_game_state"]["home_point"],
+                        pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
+                        offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
                     )
-                    return
-            raise GameStateException()
+                    found, position, image = self.search(
+                        image=self.files["application_icon"],
+                        region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+                        precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                    )
+                    if found:
+                        self.logger.info(
+                            "Application icon found, attempting to open game now..."
+                        )
+                        self.click_image(
+                            image=image,
+                            position=position,
+                            pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+                        )
+                        return
+                raise GameStateException()
 
     def check_license(self):
         """
@@ -813,7 +788,6 @@ class Bot(object):
         self,
         image,
         region=None,
-        cutoff=2,
     ):
         """
         Check that a given snapshot is the exact same as the current snapshot available.
@@ -826,10 +800,10 @@ class Bot(object):
             # contain our proper image and valid dupe status.
             return image, False
         latest = self.snapshot(region=region)
-        return latest, (
-            imagehash.average_hash(image=image) -
-            imagehash.average_hash(image=latest)
-        ) < cutoff
+        return latest, compare_images(
+            image_one=image,
+            image_two=latest,
+        )
 
     def point_is_color(
         self,
@@ -971,9 +945,9 @@ class Bot(object):
         """
         Attempt to retrieve the current max stage that a user has reached.
         """
-        if self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]:
+        if self.configuration["prestige_percent_of_max_stage_manual_ms"] > 0:
             self.logger.info(
-                "Prestige of max stage percent is set to use a manually set maximum stage, using "
+                "Prestige at percent of max stage is set to use a manually set max stage, using "
                 "this value instead of parsing the stage from game..."
             )
             self.max_stage = self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]
@@ -1004,30 +978,43 @@ class Bot(object):
                     config="--psm 7 --oem 0 nobatch",
                 )
                 self.logger.debug(
-                    "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
                         "loop": i,
                         "loops": loops,
-                        "result": result
+                        "result": result.encode("ascii", "replace"),
                     }
                 )
                 result = "".join(filter(str.isdigit, result))
                 result = int(result) if result else None
+                self.logger.debug(
+                    "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                        "loop": i,
+                        "loops": loops,
+                        "result": result,
+                    }
+                )
                 # Ensure result is a valid amount, based on hard configurations
                 # and user configurations (if specified).
+                parse_min = self.configuration["stage_parsing_minimum"] or -100000
+                parse_max = self.configuration["stage_parsing_maximum"] or 9999999
                 if (
                     result
-                    and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
-                    and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                    and parse_min <= result <= parse_max
                     and result <= self.configurations["global"]["game"]["max_stage"]
                 ):
+                    self.logger.debug(
+                        "Adding result: %(result)s to list of results..." % {
+                            "result": result,
+                        }
+                    )
                     results.append(result)
+            self.logger.debug(
+                "Calculating most common result from parsed results: %(results)s" % {
+                    "results": results,
+                }
+            )
             self.max_stage = most_common_result(
                 results=results,
-            )
-            self.logger.info(
-                "Maximum Stage: %(maximum_stage)s..." % {
-                    "maximum_stage": self.max_stage,
-                }
             )
             self.find_and_click_image(
                 image=self.files["large_exit"],
@@ -1035,6 +1022,11 @@ class Bot(object):
                 precision=self.configurations["parameters"]["parse_max_stage"]["exit_precision"],
                 pause=self.configurations["parameters"]["parse_max_stage"]["exit_pause"],
             )
+        self.logger.info(
+            "Maximum Stage: %(maximum_stage)s..." % {
+                "maximum_stage": self.max_stage,
+            }
+        )
 
     def parse_current_stage(self):
         """
@@ -1060,23 +1052,41 @@ class Bot(object):
                 config="--psm 7 --oem 0 nobatch",
             )
             self.logger.debug(
-                "Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
                     "loop": i,
                     "loops": loops,
-                    "result": result
+                    "result": result.encode("ascii", "replace"),
                 }
             )
             result = "".join(filter(str.isdigit, result))
             result = int(result) if result else None
+            self.logger.debug(
+                "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
+                    "loop": i,
+                    "loops": loops,
+                    "result": result,
+                }
+            )
             # Ensure result is a valid amount, based on hard configurations
             # and user configurations (if specified).
+            parse_min = self.configuration["stage_parsing_minimum"] or -100000
+            parse_max = self.configuration["stage_parsing_maximum"] or 9999999
             if (
                 result
-                and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
-                and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                and parse_min <= result <= parse_max
                 and result <= self.configurations["global"]["game"]["max_stage"]
             ):
+                self.logger.debug(
+                    "Adding result: %(result)s to list of results..." % {
+                        "result": result,
+                    }
+                )
                 results.append(result)
+        self.logger.debug(
+            "Calculating most common result from parsed results: %(results)s" % {
+                "results": results,
+            }
+        )
         self.current_stage = most_common_result(
             results=results,
         )
@@ -1165,7 +1175,7 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through pi-hole, unrelated to our code here).
-                if self.configuration["fairies_pi_hole"]:
+                if self.configuration["fairies_pi_hole_enabled"]:
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
@@ -1197,9 +1207,12 @@ class Bot(object):
                         return
                     self.find_and_click_image(
                         image=self.files["fairies_collect"],
-                        region=self.configurations["regions"]["fairies"]["collect_area"],
-                        precision=self.configurations["parameters"]["fairies"]["collect_precision"],
-                        pause=self.configurations["parameters"]["fairies"]["collect_pause"],
+                        region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
+                        precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
+                        pause=self.configurations["parameters"]["fairies"]["pi_hole_collect_pause"],
+                    )
+                    self.logger.info(
+                        "Fairy ad has been collected through ad blocking..."
                     )
                 else:
                     # Ads can not be collected for the user.
@@ -1375,13 +1388,19 @@ class Bot(object):
             "Attempting to level all skills in game..."
         )
         for skill, region, point, max_point, clicks in zip(
-            self.configurations["global"]["level_skills"]["skills"],
+            self.configurations["global"]["skills"]["skills"],
             self.configurations["regions"]["level_skills"]["skill_regions"],
             self.configurations["points"]["level_skills"]["skill_points"],
             self.configurations["points"]["level_skills"]["max_points"],
-            [level for level in self.configuration["level_skills_level_amount"].values()],
+            [
+                level for level in [
+                    self.configuration["%(skill)s_level_amount" % {
+                        "skill": skill,
+                    }] for skill in self.configurations["global"]["skills"]["skills"]
+                ]
+            ],
         ):
-            if clicks > 0 and not self.search(
+            if clicks != "disable" and not self.search(
                 image=[
                     self.files["level_skills_max_level"],
                     self.files["level_skills_cancel_active_skill"],
@@ -1389,27 +1408,32 @@ class Bot(object):
                 region=region,
                 precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
             )[0]:
+                # Actually level the skill in question.
+                # Regardless of max or amount specification.
                 self.logger.info(
                     "Levelling %(skill)s now..." % {
                         "skill": skill,
                     }
                 )
-                if clicks < self.configurations["parameters"]["level_skills"]["skills_max_level"]:
+                if clicks != "max":
+                    # Just level the skill the specified amount of clicks.
+                    # 1-35 most likely if frontend enforces values proper.
                     self.click(
                         point=point,
-                        clicks=clicks,
+                        clicks=int(clicks),
                         interval=self.configurations["parameters"]["level_skills"]["level_clicks_interval"],
                         pause=self.configurations["parameters"]["level_skills"]["level_clicks_pause"],
                     )
-                # Try to max out the skill.
                 else:
+                    # Attempt to max the skill out using the "level X"
+                    # option that pops up when a user levels a skill.
                     self.click(
                         point=point,
                         pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
                     )
                     if self.point_is_color_range(
-                        point=max_point,
-                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                            point=max_point,
+                            color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
                     ):
                         self.click(
                             point=max_point,
@@ -1435,7 +1459,11 @@ class Bot(object):
             "Activating skills in game..."
         )
         for enabled in [
-            skill for skill, enabled in self.configuration["activate_skills_enabled_skills"].items() if enabled
+            skill for skill, enabled in [
+                (s, self.configuration["%(skill)s_activate" % {
+                    "skill": s,
+                }]) for s in self.configurations["global"]["skills"]["skills"]
+            ] if enabled
         ]:
             self.logger.info(
                 "Activating %(skill)s now..." % {
@@ -1740,6 +1768,36 @@ class Bot(object):
         # functionality.
         self.schedule_functions()
 
+    def prestige_execute_or_schedule(self):
+        """
+        Execute, or schedule a prestige based on the current configured interval.
+        """
+        interval = self.configuration["prestige_wait_when_ready_interval"]
+
+        if interval > 0:
+            self.logger.info(
+                "Scheduling prestige to take place in %(interval)s second(s)..." % {
+                    "interval": interval,
+                }
+            )
+            # Cancel the scheduled prestige functions
+            # if it's present so the options don't clash.
+            self.cancel_scheduled_function(tags=[
+                self.prestige.__name__,
+                self.prestige_stage.__name__,
+                self.prestige_close_to_max.__name__,
+                self.prestige_percent_of_max_stage.__name__,
+            ])
+            self.schedule_function(
+                function=self.prestige,
+                interval=interval,
+            )
+        else:
+            self.logger.info(
+                "Executing prestige now..."
+            )
+            self.prestige()
+
     def prestige_stage(self):
         """
         Perform a prestige in game when the current stage exceeds the configured limit.
@@ -1760,7 +1818,7 @@ class Bot(object):
                     "require_stage": require_stage,
                 }
             )
-            self.prestige()
+            self.prestige_execute_or_schedule()
 
     def prestige_close_to_max(self):
         """
@@ -1782,7 +1840,6 @@ class Bot(object):
         self.logger.info(
             "Checking if prestige should be performed due to being close to max stage..."
         )
-        interval = self.configuration["prestige_close_to_max_post_interval"]
         prestige = False
 
         if self.configurations["global"]["events"]["event_running"]:
@@ -1825,28 +1882,7 @@ class Bot(object):
             self.logger.info(
                 "Prestige is ready..."
             )
-            if interval > 0:
-                self.logger.info(
-                    "Scheduling prestige to take place in %(interval)s second(s)..." % {
-                        "interval": interval,
-                    }
-                )
-                # Cancel the scheduled prestige functions
-                # if it's present so the options don't clash.
-                self.cancel_scheduled_function(tags=[
-                    self.prestige.__name__,
-                    self.prestige_stage.__name__,
-                    self.prestige_close_to_max.__name__,
-                ])
-                self.schedule_function(
-                    function=self.prestige,
-                    interval=interval,
-                )
-            else:
-                self.logger.info(
-                    "Executing prestige now..."
-                )
-                self.prestige()
+            self.prestige_execute_or_schedule()
 
     def prestige_percent_of_max_stage(self):
         """
@@ -1870,7 +1906,19 @@ class Bot(object):
                     "require_stage": require_stage,
                 }
             )
-            self.prestige()
+            # Additionally, if the users current stage has surpassed their old
+            # maximum stage, we should also update the max stage for the next
+            # prestige run.
+            if current_stage >= self.max_stage:
+                self.logger.info(
+                    "Current stage: \"%(current_stage)s\" exceeds the current max stage: \"%(max_stage)s\", "
+                    "maximum stage has been updated to the newest max stage." % {
+                        "current_stage": current_stage,
+                        "max_stage": self.max_stage,
+                    }
+                )
+                self.max_stage = current_stage
+            self.prestige_execute_or_schedule()
 
     def tap(self):
         """
@@ -1893,7 +1941,18 @@ class Bot(object):
             "master",
         ]
         for key in maps:
-            tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
+            if key == "heroes":
+                lst = copy.copy(self.configurations["points"]["tap"]["tap_map"][key])
+                for i in range(self.configurations["global"]["tap"]["heroes_tap_loops"]):
+                    # The "heroes" key will shuffle and reuse the map, this aids in the process
+                    # of activating the astral awakening skills.
+                    random.shuffle(lst)
+                    # After a shuffle, we'll also remove 30% of the tap keys, this speeds up
+                    # the process so we don't tap way too many points.
+                    lst = [point for point in lst if random.random() > 0.15]
+                    tap.extend(lst)
+            else:
+                tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
 
         if self.search(
             image=self.files["one_time_offer"],
@@ -2243,6 +2302,9 @@ class Bot(object):
             "application_name": self.application_name,
             "application_version": self.application_version,
         })
+        self.logger.info("Configuration: %(configuration)s" % {
+            "configuration": self.configuration["configuration_name"],
+        })
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
         })
@@ -2268,9 +2330,10 @@ class Bot(object):
                 if self.pause_func():
                     # Currently paused through the GUI.
                     # Just wait and sleep slightly in between checks.
-                    self.logger.info(
-                        "Paused..."
-                    )
+                    if self.stream.last_message != "Paused...":
+                        self.logger.info(
+                            "Paused..."
+                        )
                     time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
                 else:
                     # Ensure any pending scheduled jobs are executed at the beginning

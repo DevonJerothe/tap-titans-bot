@@ -7,7 +7,6 @@ a = Analysis(['application.py'],
              pathex=['C:\\Users\\Votum\\repos\\tap-titans-bot'],
              binaries=[],
              datas=[
-                ('C:\\Users\\Votum\\repos\\tap-titans-bot\\bot\\configuration\\default.json', 'bot\\configuration'),
                 ('C:\\Users\\Votum\\repos\\tap-titans-bot\\media\\flame.ico', 'media'),
              ],
              hiddenimports=[
