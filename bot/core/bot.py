@@ -1014,10 +1014,11 @@ class Bot(object):
                 result = int(result) if result else None
                 # Ensure result is a valid amount, based on hard configurations
                 # and user configurations (if specified).
+                parse_min = self.configuration["stage_parsing_minimum"] or -100000
+                parse_max = self.configuration["stage_parsing_maximum"] or 9999999
                 if (
                     result
-                    and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
-                    and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                    and parse_min <= result <= parse_max
                     and result <= self.configurations["global"]["game"]["max_stage"]
                 ):
                     results.append(result)
@@ -1070,10 +1071,11 @@ class Bot(object):
             result = int(result) if result else None
             # Ensure result is a valid amount, based on hard configurations
             # and user configurations (if specified).
+            parse_min = self.configuration["stage_parsing_minimum"] or -100000
+            parse_max = self.configuration["stage_parsing_maximum"] or 9999999
             if (
                 result
-                and self.configuration["stage_parsing_min"] and result >= self.configuration["stage_parsing_min"]
-                and self.configuration["stage_parsing_max"] and result <= self.configuration["stage_parsing_max"]
+                and parse_min <= result <= parse_max
                 and result <= self.configurations["global"]["game"]["max_stage"]
             ):
                 results.append(result)
