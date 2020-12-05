@@ -13,8 +13,8 @@ VALIDATION_IDENTIFIER_SECRET = "zPM$mcY$Xc{%aT"
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
 # Additional url's are generated below.
-VALIDATION_URL = "https://www.titanbots.net/"
-VALIDATION_LICENSES_URL = "%(validation_url)s%(licenses_endpoint)s" % {
+VALIDATION_URL = "https://www.titanbots.net"
+VALIDATION_LICENSES_URL = "%(validation_url)s/%(licenses_endpoint)s" % {
     "validation_url": VALIDATION_URL,
     "licenses_endpoint": "licenses",
 }
