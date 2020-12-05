@@ -86,29 +86,6 @@ class Bot(object):
             session_id=self.session,
         )
 
-        # Handle some of the local configuration functionality early (prior to license checks)
-        # so that we can make sure the window is actually opened before doing anything else.
-        self.configure_configuration()
-
-        try:
-            self.handle = WindowHandler()
-            self.window = self.handle.filter_first(
-                filter_title=self.configuration["emulator_window"],
-            )
-            self.window.configure(
-                enable_failsafe=self.configuration["failsafe_enabled"],
-            )
-        except WindowNotFoundError:
-            self.logger.info(
-                "Unable to find the configured window (%(window)s), make sure the window is visible and try again. "
-                "Your window should also be at the specified size (480x800x160DPI). If you're having trouble "
-                "finding your window, you can use the multi instance manager on your emulator to use a custom window "
-                "title instead of the default." % {
-                    "window": self.configuration["emulator_window"],
-                },
-            )
-            raise SystemExit
-
         # Begin License Validation...
         # Any of the below failures should exit us out of the
         # session that is being initialized.
@@ -129,9 +106,6 @@ class Bot(object):
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
-                )
-                self.logger.debug(
-                    self.license.license_data
                 )
             except TimeoutError:
                 self.logger.info(
@@ -196,7 +170,28 @@ class Bot(object):
         # configuration values should be available for parsing.
         self.configure_dependencies()
         self.configure_files()
+        self.configure_configuration()
         self.configure_configurations()
+
+        try:
+            self.handle = WindowHandler()
+            self.window = self.handle.filter_first(
+                filter_title=self.configuration["emulator_window"],
+            )
+            self.window.configure(
+                enable_failsafe=self.configuration["failsafe_enabled"],
+            )
+        except WindowNotFoundError:
+            self.logger.info(
+                "Unable to find the configured window (%(window)s), make sure the window is visible and try again. "
+                "Your window should also be at the specified size (480x800x160DPI). If you're having trouble "
+                "finding your window, you can use the multi instance manager on your emulator to use a custom window "
+                "title instead of the default." % {
+                    "window": self.configuration["emulator_window"],
+                },
+            )
+            raise SystemExit
+
         # Begin running the bot once all dependency/configuration/files/variables
         # have been handled and are ready to go.
         self.run()
@@ -208,10 +203,12 @@ class Bot(object):
         self.logger.info("Configuring local configuration...")
         # The settings housed here are configurable by the user locally.
         # The file should just be loaded and placed into our configuration.
-        with open(self.license.program_configuration_file, mode="r") as file:
-            self.configuration = json.loads(file.read())
+        self.configuration = self.license.license_data["configuration"]
         self.logger.debug(
             "Local Configuration: Loaded..."
+        )
+        self.logger.debug(
+            self.configuration
         )
 
     def configure_dependencies(self):
@@ -257,8 +254,7 @@ class Bot(object):
         self.logger.info("Configuring configurations...")
         # Globally available and any configurations retrieved through our
         # license can be handled here.
-        with open(self.license.program_configurations_file, mode="r") as file:
-            self.configurations = json.loads(decrypt_secret(file.read()))
+        self.configurations = json.loads(decrypt_secret(self.license.license_data["program"]["configurations"]))
         # Hide the global configurations being used...
         # Knowing that they're loaded is fine here.
         self.logger.debug(
@@ -277,7 +273,15 @@ class Bot(object):
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
         }
-        tiers = [tier for tier, enabled in self.configuration["artifacts_upgrade_tier"].items() if enabled]
+
+        tiers = [
+            tier for tier, enabled in [
+                ("s", self.configuration["artifacts_upgrade_tier_s"]),
+                ("a", self.configuration["artifacts_upgrade_tier_a"]),
+                ("b", self.configuration["artifacts_upgrade_tier_b"]),
+                ("c", self.configuration["artifacts_upgrade_tier_c"]),
+            ] if enabled
+        ]
         upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
         if self.configuration["artifacts_upgrade_artifact"]:
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
@@ -292,61 +296,6 @@ class Bot(object):
         self.max_stage = None
         # PER PRESTIGE INFO.
         self.master_levelled = False
-
-        # Log some information about the additional configurations
-        # that have been parsed out.
-        self.logger.info(
-            "====================================================================="
-        )
-        self.logger.info(
-            "Additional configurations initialized..."
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Artifacts:"
-        )
-        self.logger.info(
-            "upgrade_artifacts: %(upgrade_artifacts)s." % {
-                "upgrade_artifacts": ", ".join(upgrade_artifacts) if upgrade_artifacts else None
-            }
-        )
-        self.logger.info(
-            "next_artifact_upgrade: %(next_artifact_upgrade)s." % {
-                "next_artifact_upgrade": self.next_artifact_upgrade,
-            }
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Session:"
-        )
-        self.logger.info(
-            "current_stage: %(current_stage)s" % {
-                "current_stage": self.current_stage,
-            }
-        )
-        self.logger.info(
-            "max_stage: %(max_stage)s" % {
-                "max_stage": self.max_stage,
-            }
-        )
-        self.logger.info(
-            "---------------------------------------------------------------------"
-        )
-        self.logger.info(
-            "Per Prestige:"
-        )
-        self.logger.info(
-            "master_levelled: %(master_levelled)s" % {
-                "master_levelled": self.master_levelled,
-            }
-        )
-        self.logger.info(
-            "====================================================================="
-        )
 
     def schedule_functions(self):
         """
@@ -839,7 +788,6 @@ class Bot(object):
         self,
         image,
         region=None,
-        cutoff=2,
     ):
         """
         Check that a given snapshot is the exact same as the current snapshot available.
@@ -997,9 +945,9 @@ class Bot(object):
         """
         Attempt to retrieve the current max stage that a user has reached.
         """
-        if self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]:
+        if self.configuration["prestige_percent_of_max_stage_manual_ms"] > 0:
             self.logger.info(
-                "Prestige of max stage percent is set to use a manually set maximum stage, using "
+                "Prestige at percent of max stage is set to use a manually set max stage, using "
                 "this value instead of parsing the stage from game..."
             )
             self.max_stage = self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]
@@ -1227,7 +1175,7 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through pi-hole, unrelated to our code here).
-                if self.configuration["fairies_pi_hole"]:
+                if self.configuration["fairies_pi_hole_enabled"]:
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
@@ -1511,7 +1459,11 @@ class Bot(object):
             "Activating skills in game..."
         )
         for enabled in [
-            skill for skill, enabled in self.configuration["activate_skills_enabled_skills"].items() if enabled
+            skill for skill, enabled in [
+                (s, self.configuration["%(skill)s_activate" % {
+                    "skill": s,
+                }]) for s in self.configurations["global"]["skills"]["skills"]
+            ] if enabled
         ]:
             self.logger.info(
                 "Activating %(skill)s now..." % {
@@ -1816,6 +1768,36 @@ class Bot(object):
         # functionality.
         self.schedule_functions()
 
+    def prestige_execute_or_schedule(self):
+        """
+        Execute, or schedule a prestige based on the current configured interval.
+        """
+        interval = self.configuration["prestige_wait_when_ready_interval"]
+
+        if interval > 0:
+            self.logger.info(
+                "Scheduling prestige to take place in %(interval)s second(s)..." % {
+                    "interval": interval,
+                }
+            )
+            # Cancel the scheduled prestige functions
+            # if it's present so the options don't clash.
+            self.cancel_scheduled_function(tags=[
+                self.prestige.__name__,
+                self.prestige_stage.__name__,
+                self.prestige_close_to_max.__name__,
+                self.prestige_percent_of_max_stage.__name__,
+            ])
+            self.schedule_function(
+                function=self.prestige,
+                interval=interval,
+            )
+        else:
+            self.logger.info(
+                "Executing prestige now..."
+            )
+            self.prestige()
+
     def prestige_stage(self):
         """
         Perform a prestige in game when the current stage exceeds the configured limit.
@@ -1836,7 +1818,7 @@ class Bot(object):
                     "require_stage": require_stage,
                 }
             )
-            self.prestige()
+            self.prestige_execute_or_schedule()
 
     def prestige_close_to_max(self):
         """
@@ -1858,7 +1840,6 @@ class Bot(object):
         self.logger.info(
             "Checking if prestige should be performed due to being close to max stage..."
         )
-        interval = self.configuration["prestige_close_to_max_post_interval"]
         prestige = False
 
         if self.configurations["global"]["events"]["event_running"]:
@@ -1901,28 +1882,7 @@ class Bot(object):
             self.logger.info(
                 "Prestige is ready..."
             )
-            if interval > 0:
-                self.logger.info(
-                    "Scheduling prestige to take place in %(interval)s second(s)..." % {
-                        "interval": interval,
-                    }
-                )
-                # Cancel the scheduled prestige functions
-                # if it's present so the options don't clash.
-                self.cancel_scheduled_function(tags=[
-                    self.prestige.__name__,
-                    self.prestige_stage.__name__,
-                    self.prestige_close_to_max.__name__,
-                ])
-                self.schedule_function(
-                    function=self.prestige,
-                    interval=interval,
-                )
-            else:
-                self.logger.info(
-                    "Executing prestige now..."
-                )
-                self.prestige()
+            self.prestige_execute_or_schedule()
 
     def prestige_percent_of_max_stage(self):
         """
@@ -1946,7 +1906,19 @@ class Bot(object):
                     "require_stage": require_stage,
                 }
             )
-            self.prestige()
+            # Additionally, if the users current stage has surpassed their old
+            # maximum stage, we should also update the max stage for the next
+            # prestige run.
+            if current_stage >= self.max_stage:
+                self.logger.info(
+                    "Current stage: \"%(current_stage)s\" exceeds the current max stage: \"%(max_stage)s\", "
+                    "maximum stage has been updated to the newest max stage." % {
+                        "current_stage": current_stage,
+                        "max_stage": self.max_stage,
+                    }
+                )
+                self.max_stage = current_stage
+            self.prestige_execute_or_schedule()
 
     def tap(self):
         """
@@ -2330,6 +2302,9 @@ class Bot(object):
             "application_name": self.application_name,
             "application_version": self.application_version,
         })
+        self.logger.info("Configuration: %(configuration)s" % {
+            "configuration": self.configuration["configuration_name"],
+        })
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
         })
@@ -2355,9 +2330,10 @@ class Bot(object):
                 if self.pause_func():
                     # Currently paused through the GUI.
                     # Just wait and sleep slightly in between checks.
-                    self.logger.info(
-                        "Paused..."
-                    )
+                    if self.stream.last_message != "Paused...":
+                        self.logger.info(
+                            "Paused..."
+                        )
                     time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
                 else:
                     # Ensure any pending scheduled jobs are executed at the beginning
