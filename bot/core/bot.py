@@ -1923,7 +1923,18 @@ class Bot(object):
             "master",
         ]
         for key in maps:
-            tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
+            if key == "heroes":
+                lst = copy.copy(self.configurations["points"]["tap"]["tap_map"][key])
+                for i in range(self.configurations["global"]["tap"]["heroes_tap_loops"]):
+                    # The "heroes" key will shuffle and reuse the map, this aids in the process
+                    # of activating the astral awakening skills.
+                    random.shuffle(lst)
+                    # After a shuffle, we'll also remove 30% of the tap keys, this speeds up
+                    # the process so we don't tap way too many points.
+                    lst = [point for point in lst if random.random() > 0.15]
+                    tap.extend(lst)
+            else:
+                tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
 
         if self.search(
             image=self.files["one_time_offer"],
