@@ -11,8 +11,7 @@ from gui.settings import (
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
     MENU_PAUSE_SESSION,
-    MENU_UPDATE_CONFIGURATION,
-    MENU_UPDATE_CONFIGURATION_DEFAULTS,
+    MENU_CONFIGURATIONS,
     MENU_UPDATE_LICENSE,
     MENU_TOOLS,
     MENU_TOOLS_LOCAL_DATA,
@@ -30,9 +29,6 @@ from license_validator.utilities import (
 
 from bot.core.bot import (
     Bot,
-)
-from bot.configuration.utilities import (
-    set_local_configuration,
 )
 
 import PySimpleGUIWx as sg
@@ -80,17 +76,12 @@ class GUI(object):
             # for a license right away.
             self.update_license()
 
-        # We'll always set our configuration once on initialization.
-        # This means if one doesn't exist, defaults are used, if one does exist,
-        # new options will be generated if needed.
-        self.update_configuration(open_file=False)
         self.event_map = {
             MENU_START_SESSION: self.start_session,
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
-            MENU_UPDATE_CONFIGURATION: self.update_configuration,
-            MENU_UPDATE_CONFIGURATION_DEFAULTS: self.update_configuration_defaults,
+            MENU_CONFIGURATIONS: self.configurations,
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
@@ -171,8 +162,7 @@ class GUI(object):
                 self.menu_entry(text=MENU_RESUME_SESSION, disabled=self._thread is None or self._pause is False),
                 self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self._thread is None or self._pause is True),
                 self.menu_entry(separator=True),
-                self.menu_entry(text=MENU_UPDATE_CONFIGURATION),
-                self.menu_entry(text=MENU_UPDATE_CONFIGURATION_DEFAULTS),
+                self.menu_entry(text=MENU_CONFIGURATIONS),
                 self.menu_entry(text=MENU_UPDATE_LICENSE),
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_TOOLS),
@@ -217,6 +207,9 @@ class GUI(object):
         "start_session" event functionality.
         """
         if not self._thread:
+            self.logger.info(
+                "Starting Session..."
+            )
             self._stop = False
             self._session = uuid.uuid4().hex
             self._thread = threading.Thread(
@@ -238,6 +231,9 @@ class GUI(object):
         "stop_session" functionality.
         """
         if self._thread is not None:
+            self.logger.info(
+                "Stopping Session..."
+            )
             self._stop = True
             self._session = None
             self._thread.join()
@@ -248,6 +244,9 @@ class GUI(object):
         "pause_session" functionality.
         """
         if self._thread is not None:
+            self.logger.info(
+                "Pausing Session..."
+            )
             self._pause = True
 
     def resume_session(self):
@@ -255,41 +254,21 @@ class GUI(object):
         "resume_session" functionality.
         """
         if self._thread is not None:
+            self.logger.info(
+                "Resuming Session..."
+            )
             self._pause = False
 
-    def update_configuration(self, defaults=False, open_file=True):
+    def configurations(self):
         """
-        "update_configuration" event functionality.
+        "configurations" event functionality.
         """
-        # Before we open up the configuration file for modification,
-        # we perform a check to see if we need to generate the default
-        # data to be put in it.
-        set_local_configuration(
-            local_configuration_file=self.license.program_configuration_file,
-            defaults=defaults,
-        )
-        if not defaults:
-            if open_file:
-                self.logger.info(
-                    "Opening local configuration for modification..."
-                )
-                os.startfile(
-                    filepath=self.license.program_configuration_file,
-                )
-
-    def update_configuration_defaults(self, open_file=False):
-        """
-        "update_configuration_defaults" event functionality.
-        """
-        if self.yes_no_popup(
-            text="Are you sure? Reverting to defaults will purge your current local configuration.",
-        ):
-            self.logger.info(
-                "Reverting configurations to defaults..."
-            )
-            self.update_configuration(
-                defaults=True,
-                open_file=open_file,
+        if self.license.license_available:
+            return webbrowser.open_new_tab(
+                url=self.license.program_configurations_template + "/%(program_name)s/%(license)s" % {
+                    "program_name": self.license.program_name,
+                    "license": self.license.license,
+                }
             )
 
     def update_license(self):
@@ -345,7 +324,7 @@ class GUI(object):
         )
         if file:
             self.logger.info(
-                "Opening most recent log: %(file)s: %(file)s..." % {
+                "Opening most recent log: %(file)s:..." % {
                     "file": file,
                 }
             )
@@ -375,7 +354,7 @@ class GUI(object):
         "discord" event functionality.
         """
         self.logger.info(
-            "Opening discord serer now..."
+            "Opening discord server now..."
         )
         return webbrowser.open_new_tab(
             url=self.application_discord,
@@ -390,7 +369,7 @@ class GUI(object):
         )
         raise SystemExit
 
-    def purge_old_logs(self, days=5):
+    def purge_old_logs(self, days=3):
         """
         Purge any logs present that are older than the specified amount of days.
         """
