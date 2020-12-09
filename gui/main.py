@@ -211,6 +211,7 @@ class GUI(object):
                 "Starting Session..."
             )
             self._stop = False
+            self._pause = False
             self._session = uuid.uuid4().hex
             self._thread = threading.Thread(
                 target=Bot,
@@ -235,6 +236,7 @@ class GUI(object):
                 "Stopping Session..."
             )
             self._stop = True
+            self._pause = False
             self._session = None
             self._thread.join()
             self._thread = None
@@ -367,6 +369,9 @@ class GUI(object):
         self.logger.info(
             "Exiting..."
         )
+        self.stop_session()
+        # SystemExit to leave with valid return code.
+        # We don't want any exceptions raised.
         raise SystemExit
 
     def purge_old_logs(self, days=3):

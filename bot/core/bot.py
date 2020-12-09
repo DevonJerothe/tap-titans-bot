@@ -349,6 +349,10 @@ class Bot(object):
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
             },
+            self.perks: {
+                "enabled": self.configuration["perks_enabled"],
+                "interval": self.configuration["perks_interval"],
+            },
             self.prestige: {
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
@@ -411,10 +415,6 @@ class Bot(object):
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "execute": self.configurations["global"]["eggs"]["eggs_on_start"],
             },
-            self.inbox: {
-                "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
-                "execute": self.configurations["global"]["inbox"]["inbox_on_start"],
-            },
             self.parse_max_stage: {
                 "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
                 "execute": self.configuration["prestige_percent_of_max_stage_enabled"],
@@ -430,6 +430,10 @@ class Bot(object):
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "execute": self.configuration["activate_skills_on_start"],
+            },
+            self.inbox: {
+                "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
+                "execute": self.configurations["global"]["inbox"]["inbox_on_start"],
             },
             # Tap comes before daily rewards because issues may crop up when
             # a fairy is displayed when trying to collect rewards. Tapping first
@@ -449,6 +453,10 @@ class Bot(object):
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "execute": self.configuration["level_heroes_on_start"],
+            },
+            self.perks: {
+                "enabled": self.configuration["perks_enabled"],
+                "execute": self.configuration["perks_on_start"],
             },
         }.items():
             if data["enabled"] and data["execute"]:
@@ -488,13 +496,13 @@ class Bot(object):
         timeout_check_game_state_cnt = 0
         timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
 
-        # Attempting to travel to the main screen
-        # in game. This will for sure have our
-        # game state icons, and likely some of the
-        # travel icons.
-        self.travel_to_main_screen()
-
         while True:
+            # Attempting to travel to the main screen
+            # in game. This will for sure have our
+            # game state icons, and likely some of the
+            # travel icons.
+            self.travel_to_main_screen()
+
             try:
                 if not self.search(
                     image=[
@@ -531,34 +539,36 @@ class Bot(object):
                 self.logger.info(
                     "Unable to derive current game state, attempting to recover and restart application..."
                 )
-                if not self.window.form:
+                # Attempting to drag the screen and use the emulator screen
+                # directly to travel to the home screen to recover.
+                self.drag(
+                    start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
+                    end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
+                    pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
+                )
+                self.click(
+                    point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
+                    clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
+                    interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
+                    pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
+                    offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+                )
+                # The home screen should be active and the icon present on screen.
+                found, position, image = self.search(
+                    image=self.files["application_icon"],
+                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                )
+                if found:
                     self.logger.info(
-                        "Emulator \"form\" instance not found, terminating instance now... If you are not using a Nox emulator, "
-                        "this is the most likely reason why this process did not work, if you are using Nox and still encountering "
-                        "this error, contact the support team for additional help."
+                        "Application icon found, attempting to open game now..."
                     )
-                else:
-                    self.click(
-                        window=self.window.form,
-                        point=self.configurations["points"]["check_game_state"]["home_point"],
-                        pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
-                        offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
+                    self.click_image(
+                        image=image,
+                        position=position,
+                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
                     )
-                    found, position, image = self.search(
-                        image=self.files["application_icon"],
-                        region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                        precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
-                    )
-                    if found:
-                        self.logger.info(
-                            "Application icon found, attempting to open game now..."
-                        )
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
-                        )
-                        return
+                    return
                 raise GameStateException()
 
     def check_license(self):
@@ -950,7 +960,7 @@ class Bot(object):
                 "Prestige at percent of max stage is set to use a manually set max stage, using "
                 "this value instead of parsing the stage from game..."
             )
-            self.max_stage = self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]
+            self.max_stage = self.configuration["prestige_percent_of_max_stage_manual_ms"]
         else:
             self.travel_to_master()
             self.logger.info(
@@ -1175,26 +1185,26 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through pi-hole, unrelated to our code here).
-                if self.configuration["fairies_pi_hole_enabled"]:
+                if self.configuration["ad_blocking_enabled"]:
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
                     try:
-                        timeout_fairy_pi_hole_cnt = 0
-                        timeout_fairy_pi_hole_max = self.configurations["parameters"]["fairies"]["pi_hole_timeout"]
+                        timeout_fairy_ad_block_cnt = 0
+                        timeout_fairy_ad_block_max = self.configurations["parameters"]["fairies"]["ad_block_timeout"]
 
                         while not self.search(
                             image=self.files["fairies_collect"],
-                            region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
-                            precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
+                            region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
+                            precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
                         )[0]:
                             self.click(
                                 point=self.configurations["points"]["fairies"]["collect_or_watch"],
-                                pause=self.configurations["parameters"]["fairies"]["pi_hole_pause"],
+                                pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
                             )
-                            timeout_fairy_pi_hole_cnt = self.handle_timeout(
-                                count=timeout_fairy_pi_hole_cnt,
-                                timeout=timeout_fairy_pi_hole_max,
+                            timeout_fairy_ad_block_cnt = self.handle_timeout(
+                                count=timeout_fairy_ad_block_cnt,
+                                timeout=timeout_fairy_ad_block_max,
                             )
                     except TimeoutError:
                         self.logger.info(
@@ -1207,9 +1217,9 @@ class Bot(object):
                         return
                     self.find_and_click_image(
                         image=self.files["fairies_collect"],
-                        region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
-                        precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
-                        pause=self.configurations["parameters"]["fairies"]["pi_hole_collect_pause"],
+                        region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
+                        precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
+                        pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
                     )
                     self.logger.info(
                         "Fairy ad has been collected through ad blocking..."
@@ -1325,42 +1335,48 @@ class Bot(object):
         self.logger.info(
             "Checking if achievements are available to collect..."
         )
-        self.find_and_click_image(
+        # Do things slightly different here, if the achievements icon
+        # is not on the screen, it means there's likely either the "new" or "X"
+        # number of available achievements to collect.
+        if not self.search(
             image=self.files["achievements_icon"],
             region=self.configurations["regions"]["achievements"]["search_area"],
             precision=self.configurations["parameters"]["achievements"]["search_precision"],
-            pause=self.configurations["parameters"]["achievements"]["search_pause"],
-        )
-        # Also ensure the daily tab is opened.
-        self.find_and_click_image(
-            image=self.files["achievements_daily_header"],
-            region=self.configurations["regions"]["achievements"]["daily_header_area"],
-            precision=self.configurations["parameters"]["achievements"]["daily_header_precision"],
-            pause=self.configurations["parameters"]["achievements"]["daily_header_pause"],
-        )
-        while True:
-            found, position, image = self.search(
-                image=self.files["achievements_collect"],
-                region=self.configurations["regions"]["achievements"]["collect_area"],
-                precision=self.configurations["parameters"]["achievements"]["collect_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["achievements"]["achievements_icon"],
+                pause=self.configurations["parameters"]["achievements"]["icon_pause"],
             )
-            if found:
-                self.logger.info(
-                    "Collecting achievement..."
+            # Also ensure the daily tab is opened.
+            self.find_and_click_image(
+                image=self.files["achievements_daily_header"],
+                region=self.configurations["regions"]["achievements"]["daily_header_area"],
+                precision=self.configurations["parameters"]["achievements"]["daily_header_precision"],
+                pause=self.configurations["parameters"]["achievements"]["daily_header_pause"],
+            )
+            while True:
+                found, position, image = self.search(
+                    image=self.files["achievements_collect"],
+                    region=self.configurations["regions"]["achievements"]["collect_area"],
+                    precision=self.configurations["parameters"]["achievements"]["collect_precision"],
                 )
-                self.click_image(
-                    image=image,
-                    position=position,
-                    pause=self.configurations["parameters"]["achievements"]["collect_pause"],
-                )
-            else:
-                self.find_and_click_image(
-                    image=self.files["large_exit"],
-                    region=self.configurations["regions"]["achievements"]["exit_area"],
-                    precision=self.configurations["parameters"]["achievements"]["exit_precision"],
-                    pause=self.configurations["parameters"]["achievements"]["exit_pause"],
-                )
-                break
+                if found:
+                    self.logger.info(
+                        "Collecting achievement..."
+                    )
+                    self.click_image(
+                        image=image,
+                        position=position,
+                        pause=self.configurations["parameters"]["achievements"]["collect_pause"],
+                    )
+                else:
+                    self.find_and_click_image(
+                        image=self.files["large_exit"],
+                        region=self.configurations["regions"]["achievements"]["exit_area"],
+                        precision=self.configurations["parameters"]["achievements"]["exit_precision"],
+                        pause=self.configurations["parameters"]["achievements"]["exit_pause"],
+                    )
+                    break
 
     def level_master(self):
         """
@@ -1576,6 +1592,185 @@ class Bot(object):
                 callback=level_heroes_on_screen,
             )
 
+    def perks(self):
+        """
+        Perform all perk related functionality in game, using/purchasing perks if enabled.
+        """
+        self.travel_to_master(collapsed=False)
+        self.logger.info(
+            "Using perks in game..."
+        )
+        timeout_perks_search_cnt = 0
+        timeout_perks_search_max = self.configurations["parameters"]["perks"]["icons_timeout"]
+
+        # Travel to the bottom (ish) of the master tab, we'll scroll until
+        # we've found the "clan crate" perk, since that's the last one available.
+        try:
+            while not self.search(
+                image=self.files["perks_clan_crate"],
+                region=self.configurations["regions"]["perks"]["icons_area"],
+                precision=self.configurations["parameters"]["perks"]["icons_precision"],
+            )[0]:
+                self.drag(
+                    start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                    end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                    pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                )
+                timeout_perks_search_cnt = self.handle_timeout(
+                    count=timeout_perks_search_cnt,
+                    timeout=timeout_perks_search_max,
+                )
+        except TimeoutError:
+            self.logger.info(
+                "Unable to find the \"clan_crate\" perk in game, skipping perk functionality..."
+            )
+            return
+
+        # We should be able to see all (or most) of the perks in game, clan crate is on the screen.
+        # We'll search for each enabled perk, if it isn't found, we'll scroll up a bit.
+        # Note: Reversing our list of enabled perks (bottom to top).
+        for perk in [
+            perk for perk, enabled in [
+                ("clan_crate", self.configuration["perks_enable_clan_crate"]),
+                ("doom", self.configuration["perks_enable_doom"]),
+                ("mana_potion", self.configuration["perks_enable_mana_potion"]),
+                ("make_it_rain", self.configuration["perks_enable_make_it_rain"]),
+                ("adrenaline_rush", self.configuration["perks_enable_adrenaline_rush"]),
+                ("power_of_swiping", self.configuration["perks_enable_power_of_swiping"]),
+                ("mega_boost", self.configuration["perks_enable_mega_boost"]),
+            ] if enabled
+        ]:
+            self.logger.info(
+                "Attempting to use \"%(perk)s\" perk..." % {
+                    "perk": perk,
+                }
+            )
+            timeout_perks_enabled_perk_cnt = 0
+            timeout_perks_enabled_perk_max = self.configurations["parameters"]["perks"]["enabled_perk_timeout"]
+
+            try:
+                while not self.search(
+                    image=self.files["perks_%(perk)s" % {"perk": perk}],
+                    region=self.configurations["regions"]["perks"]["icons_area"],
+                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                )[0]:
+                    # Dragging up until the enabled perk
+                    # is found.
+                    self.drag(
+                        start=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                        end=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                        pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                    )
+                    timeout_perks_enabled_perk_cnt = self.handle_timeout(
+                        count=timeout_perks_enabled_perk_cnt,
+                        timeout=timeout_perks_enabled_perk_max,
+                    )
+                # Icon is found, we'll get the position so we can add proper
+                # padding and attempt to use the perk.
+                _, position, image = self.search(
+                    image=self.files["perks_%(perk)s" % {"perk": perk}],
+                    region=self.configurations["regions"]["perks"]["icons_area"],
+                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                )
+                # Dynamically calculate the location of the upgrade button
+                # and perform a click.
+                point = (
+                    position[0] + self.configurations["parameters"]["perks"]["position_x_padding"],
+                    position[1] + self.configurations["parameters"]["perks"]["position_y_padding"],
+                )
+
+                if perk == "mega_boost":
+                    # If the free image can be found and clicked on (vip/pass), we can
+                    # exit early and just assume that the perk was used successfully.
+                    if self.find_and_click_image(
+                        image=self.files["perks_free"],
+                        region=self.configurations["regions"]["perks"]["free_area"],
+                        precision=self.configurations["parameters"]["perks"]["free_precision"],
+                        pause=self.configurations["parameters"]["perks"]["free_pause"],
+                    ):
+                        continue
+                    # Should we try and use the pi hole functionality to handle
+                    # the collection of the mega boost perk?
+                    if self.configuration["ad_blocking_enabled"]:
+                        # Follow normal flow and try to watch the ad
+                        # "Okay" button will begin the process.
+                        self.click(
+                            point=point,
+                            pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                        )
+                        while self.search(
+                            image=self.files["perks_header"],
+                            region=self.configurations["regions"]["perks"]["header_area"],
+                            precision=self.configurations["parameters"]["perks"]["header_precision"],
+                        )[0]:
+                            # Looping until the perks header has disappeared, which represents
+                            # the ad collection being finished.
+                            self.find_and_click_image(
+                                image=self.files["perks_okay"],
+                                region=self.configurations["regions"]["perks"]["okay_area"],
+                                precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                                pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                            )
+                else:
+                    self.click(
+                        point=point,
+                        pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                    )
+                    # If the header is available, the perk is not already active.
+                    if self.search(
+                        image=self.files["perks_header"],
+                        region=self.configurations["regions"]["perks"]["header_area"],
+                        precision=self.configurations["parameters"]["perks"]["header_precision"]
+                    )[0]:
+                        # Does this perk require diamonds to actually use?
+                        if self.search(
+                            image=self.files["perks_diamond"],
+                            region=self.configurations["regions"]["perks"]["diamond_area"],
+                            precision=self.configurations["parameters"]["perks"]["diamond_precision"],
+                        )[0]:
+                            if not self.configuration["perks_spend_diamonds"]:
+                                self.logger.info(
+                                    "The \"%(perk)s\" requires spending diamonds to use but diamond spending "
+                                    "is disabled, skipping..." % {
+                                        "perk": perk,
+                                    }
+                                )
+                                self.find_and_click_image(
+                                    image=self.files["perks_cancel"],
+                                    region=self.configurations["regions"]["perks"]["cancel_area"],
+                                    precision=self.configurations["parameters"]["perks"]["cancel_precision"],
+                                    pause=self.configurations["parameters"]["perks"]["cancel_pause"],
+                                )
+                                continue
+                        # Perk can be used if we get to this point...
+                        # Activating it now.
+                        self.find_and_click_image(
+                            image=self.files["perks_okay"],
+                            region=self.configurations["regions"]["perks"]["okay_area"],
+                            precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                            pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                        )
+                        if perk == "mana_potion":
+                            # Mana potion unfortunately actually closes our
+                            # master panel, we'll need to open it back up.
+                            self.click(
+                                point=self.configurations["points"]["travel"]["tabs"]["master"],
+                                pause=self.configurations["parameters"]["perks"]["post_use_open_master_pause"],
+                            )
+                    else:
+                        self.logger.info(
+                            "The \"%(perk)s\" perk is already active, skipping..." % {
+                                "perk": perk,
+                            }
+                        )
+            except TimeoutError:
+                self.logger.info(
+                    "The \"%(perk)s\" perk could not be found on the screen, skipping..." % {
+                        "perk": perk,
+                    }
+                )
+                continue
+
     @event(title="Prestige Performed")
     def prestige(self):
         """
@@ -1583,31 +1778,101 @@ class Bot(object):
         """
         self.travel_to_master()
         self.leave_boss()
-        self.logger.info(
-            "Performing prestige now..."
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_confirm_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_confirm_confirm_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
-        )
 
-        # Waiting here through the confirm_confirm_icon_pause for the prestige
-        # animation to be finished before moving on...
+        tournament_prestige = False
 
+        # Handle all tournament functionality within our final prestige
+        # execution. If enabled, we can check that a tournament is even running,
+        # check if one can be joined, or check that rewards can be collected.
+        if self.configuration["tournaments_enabled"]:
+            self.logger.info(
+                "Tournaments are enabled, checking current status of in game tournament..."
+            )
+            # Tournament is in a "grey" state, one will be starting soon...
+            # We do nothing here.
+            if self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_soon_range"],
+            ):
+                # Tournament is not ready yet at all. Doing nothing for tournament functionality.
+                self.logger.info(
+                    "Tournament is starting soon, skipping tournament functionality until ready..."
+                )
+            # Tournament is in a "blue" state, one is ready and can
+            # be joined now, we join the tournament here.
+            elif self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_ready_range"],
+            ):
+                tournament_prestige = True
+                # Tournament is available and to be joined... Attempting to join and skip
+                # prestige functionality below.
+                self.click(
+                    point=self.configurations["points"]["tournaments"]["tournaments_icon"],
+                    pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["tournaments_join"],
+                    region=self.configurations["regions"]["tournaments"]["join_area"],
+                    precision=self.configurations["parameters"]["tournaments"]["join_precision"],
+                    pause=self.configurations["parameters"]["tournaments"]["join_pause"],
+                )
+                self.logger.info(
+                    "Performing tournament prestige now..."
+                )
+                self.find_and_click_image(
+                    image=self.files["prestige_confirm_confirm_icon"],
+                    region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                )
+            # Tournament is in a "red" state, one we joined is now
+            # over and rewards are available.
+            elif self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_over_range"],
+            ):
+                self.click(
+                    point=self.configurations["points"]["tournaments"]["tournaments_icon"],
+                    pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["tournaments_collect"],
+                    region=self.configurations["regions"]["tournaments"]["collect_area"],
+                    precision=self.configurations["parameters"]["tournaments"]["collect_precision"],
+                    pause=self.configurations["parameters"]["tournaments"]["collect_pause"],
+                )
+                self.click(
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
+                    interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
+                    pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
+                )
+
+        if not tournament_prestige:
+            self.logger.info(
+                "Performing prestige now..."
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_confirm_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_confirm_confirm_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+            )
+            # Waiting here through the confirm_confirm_icon_pause for the prestige
+            # animation to be finished before moving on...
         if self.configuration["artifacts_enabled"]:
             self.travel_to_artifacts(collapsed=False)
             # Artifacts are enabled, we'll check for a couple of things,
@@ -1872,12 +2137,19 @@ class Bot(object):
                 prestige = True
             # Closing the skill tree once finished.
             # "prestige" variable will determine next steps below.
-            self.find_and_click_image(
-                image=self.files["large_exit"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
-                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
-            )
+            while self.search(
+                image=self.files["prestige_close_to_max_skill_tree_header"],
+                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
+                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
+            )[0]:
+                # Looping to exit, careful since not exiting could cause us
+                # to use a skill point, which makes it hard to leave the prompt.
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+                )
         if prestige:
             self.logger.info(
                 "Prestige is ready..."
