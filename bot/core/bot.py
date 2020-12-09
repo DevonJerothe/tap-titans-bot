@@ -1335,42 +1335,48 @@ class Bot(object):
         self.logger.info(
             "Checking if achievements are available to collect..."
         )
-        self.find_and_click_image(
+        # Do things slightly different here, if the achievements icon
+        # is not on the screen, it means there's likely either the "new" or "X"
+        # number of available achievements to collect.
+        if not self.search(
             image=self.files["achievements_icon"],
             region=self.configurations["regions"]["achievements"]["search_area"],
             precision=self.configurations["parameters"]["achievements"]["search_precision"],
-            pause=self.configurations["parameters"]["achievements"]["search_pause"],
-        )
-        # Also ensure the daily tab is opened.
-        self.find_and_click_image(
-            image=self.files["achievements_daily_header"],
-            region=self.configurations["regions"]["achievements"]["daily_header_area"],
-            precision=self.configurations["parameters"]["achievements"]["daily_header_precision"],
-            pause=self.configurations["parameters"]["achievements"]["daily_header_pause"],
-        )
-        while True:
-            found, position, image = self.search(
-                image=self.files["achievements_collect"],
-                region=self.configurations["regions"]["achievements"]["collect_area"],
-                precision=self.configurations["parameters"]["achievements"]["collect_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["achievements"]["achievements_icon"],
+                pause=self.configurations["parameters"]["achievements"]["icon_pause"],
             )
-            if found:
-                self.logger.info(
-                    "Collecting achievement..."
+            # Also ensure the daily tab is opened.
+            self.find_and_click_image(
+                image=self.files["achievements_daily_header"],
+                region=self.configurations["regions"]["achievements"]["daily_header_area"],
+                precision=self.configurations["parameters"]["achievements"]["daily_header_precision"],
+                pause=self.configurations["parameters"]["achievements"]["daily_header_pause"],
+            )
+            while True:
+                found, position, image = self.search(
+                    image=self.files["achievements_collect"],
+                    region=self.configurations["regions"]["achievements"]["collect_area"],
+                    precision=self.configurations["parameters"]["achievements"]["collect_precision"],
                 )
-                self.click_image(
-                    image=image,
-                    position=position,
-                    pause=self.configurations["parameters"]["achievements"]["collect_pause"],
-                )
-            else:
-                self.find_and_click_image(
-                    image=self.files["large_exit"],
-                    region=self.configurations["regions"]["achievements"]["exit_area"],
-                    precision=self.configurations["parameters"]["achievements"]["exit_precision"],
-                    pause=self.configurations["parameters"]["achievements"]["exit_pause"],
-                )
-                break
+                if found:
+                    self.logger.info(
+                        "Collecting achievement..."
+                    )
+                    self.click_image(
+                        image=image,
+                        position=position,
+                        pause=self.configurations["parameters"]["achievements"]["collect_pause"],
+                    )
+                else:
+                    self.find_and_click_image(
+                        image=self.files["large_exit"],
+                        region=self.configurations["regions"]["achievements"]["exit_area"],
+                        precision=self.configurations["parameters"]["achievements"]["exit_precision"],
+                        pause=self.configurations["parameters"]["achievements"]["exit_pause"],
+                    )
+                    break
 
     def level_master(self):
         """
