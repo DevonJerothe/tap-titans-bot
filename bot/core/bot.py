@@ -1185,26 +1185,26 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through pi-hole, unrelated to our code here).
-                if self.configuration["fairies_pi_hole_enabled"]:
+                if self.configuration["ad_blocking_enabled"]:
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
                     try:
-                        timeout_fairy_pi_hole_cnt = 0
-                        timeout_fairy_pi_hole_max = self.configurations["parameters"]["fairies"]["pi_hole_timeout"]
+                        timeout_fairy_ad_block_cnt = 0
+                        timeout_fairy_ad_block_max = self.configurations["parameters"]["fairies"]["ad_block_timeout"]
 
                         while not self.search(
                             image=self.files["fairies_collect"],
-                            region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
-                            precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
+                            region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
+                            precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
                         )[0]:
                             self.click(
                                 point=self.configurations["points"]["fairies"]["collect_or_watch"],
-                                pause=self.configurations["parameters"]["fairies"]["pi_hole_pause"],
+                                pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
                             )
-                            timeout_fairy_pi_hole_cnt = self.handle_timeout(
-                                count=timeout_fairy_pi_hole_cnt,
-                                timeout=timeout_fairy_pi_hole_max,
+                            timeout_fairy_ad_block_cnt = self.handle_timeout(
+                                count=timeout_fairy_ad_block_cnt,
+                                timeout=timeout_fairy_ad_block_max,
                             )
                     except TimeoutError:
                         self.logger.info(
@@ -1217,9 +1217,9 @@ class Bot(object):
                         return
                     self.find_and_click_image(
                         image=self.files["fairies_collect"],
-                        region=self.configurations["regions"]["fairies"]["pi_hole_collect_area"],
-                        precision=self.configurations["parameters"]["fairies"]["pi_hole_collect_precision"],
-                        pause=self.configurations["parameters"]["fairies"]["pi_hole_collect_pause"],
+                        region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
+                        precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
+                        pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
                     )
                     self.logger.info(
                         "Fairy ad has been collected through ad blocking..."
