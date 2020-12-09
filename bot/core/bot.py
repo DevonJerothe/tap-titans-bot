@@ -1583,31 +1583,101 @@ class Bot(object):
         """
         self.travel_to_master()
         self.leave_boss()
-        self.logger.info(
-            "Performing prestige now..."
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_confirm_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
-        )
-        self.find_and_click_image(
-            image=self.files["prestige_confirm_confirm_icon"],
-            region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
-            precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-            pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
-        )
 
-        # Waiting here through the confirm_confirm_icon_pause for the prestige
-        # animation to be finished before moving on...
+        tournament_prestige = False
 
+        # Handle all tournament functionality within our final prestige
+        # execution. If enabled, we can check that a tournament is even running,
+        # check if one can be joined, or check that rewards can be collected.
+        if self.configuration["tournaments_enabled"]:
+            self.logger.info(
+                "Tournaments are enabled, checking current status of in game tournament..."
+            )
+            # Tournament is in a "grey" state, one will be starting soon...
+            # We do nothing here.
+            if self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_soon_range"],
+            ):
+                # Tournament is not ready yet at all. Doing nothing for tournament functionality.
+                self.logger.info(
+                    "Tournament is starting soon, skipping tournament functionality until ready..."
+                )
+            # Tournament is in a "blue" state, one is ready and can
+            # be joined now, we join the tournament here.
+            elif self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_ready_range"],
+            ):
+                tournament_prestige = True
+                # Tournament is available and to be joined... Attempting to join and skip
+                # prestige functionality below.
+                self.click(
+                    point=self.configurations["points"]["tournaments"]["tournaments_icon"],
+                    pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["tournaments_join"],
+                    region=self.configurations["regions"]["tournaments"]["join_area"],
+                    precision=self.configurations["parameters"]["tournaments"]["join_precision"],
+                    pause=self.configurations["parameters"]["tournaments"]["join_pause"],
+                )
+                self.logger.info(
+                    "Performing tournament prestige now..."
+                )
+                self.find_and_click_image(
+                    image=self.files["prestige_confirm_confirm_icon"],
+                    region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                )
+            # Tournament is in a "red" state, one we joined is now
+            # over and rewards are available.
+            elif self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_over_range"],
+            ):
+                self.click(
+                    point=self.configurations["points"]["tournaments"]["tournaments_icon"],
+                    pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["tournaments_collect"],
+                    region=self.configurations["regions"]["tournaments"]["collect_area"],
+                    precision=self.configurations["parameters"]["tournaments"]["collect_precision"],
+                    pause=self.configurations["parameters"]["tournaments"]["collect_pause"],
+                )
+                self.click(
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
+                    interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
+                    pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
+                )
+
+        if not tournament_prestige:
+            self.logger.info(
+                "Performing prestige now..."
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_confirm_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
+            )
+            self.find_and_click_image(
+                image=self.files["prestige_confirm_confirm_icon"],
+                region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+            )
+            # Waiting here through the confirm_confirm_icon_pause for the prestige
+            # animation to be finished before moving on...
         if self.configuration["artifacts_enabled"]:
             self.travel_to_artifacts(collapsed=False)
             # Artifacts are enabled, we'll check for a couple of things,
