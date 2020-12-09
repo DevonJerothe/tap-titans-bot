@@ -950,7 +950,7 @@ class Bot(object):
                 "Prestige at percent of max stage is set to use a manually set max stage, using "
                 "this value instead of parsing the stage from game..."
             )
-            self.max_stage = self.configuration["prestige_percent_of_max_stage_percent_use_manual_ms"]
+            self.max_stage = self.configuration["prestige_percent_of_max_stage_manual_ms"]
         else:
             self.travel_to_master()
             self.logger.info(
