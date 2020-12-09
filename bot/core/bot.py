@@ -2137,12 +2137,19 @@ class Bot(object):
                 prestige = True
             # Closing the skill tree once finished.
             # "prestige" variable will determine next steps below.
-            self.find_and_click_image(
-                image=self.files["large_exit"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
-                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
-            )
+            while self.search(
+                image=self.files["prestige_close_to_max_skill_tree_header"],
+                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
+                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
+            )[0]:
+                # Looping to exit, careful since not exiting could cause us
+                # to use a skill point, which makes it hard to leave the prompt.
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+                )
         if prestige:
             self.logger.info(
                 "Prestige is ready..."
