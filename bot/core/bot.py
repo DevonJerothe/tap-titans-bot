@@ -349,6 +349,10 @@ class Bot(object):
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
             },
+            self.perks: {
+                "enabled": self.configuration["perks_enabled"],
+                "interval": self.configuration["perks_interval"],
+            },
             self.prestige: {
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
@@ -449,6 +453,10 @@ class Bot(object):
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "execute": self.configuration["level_heroes_on_start"],
+            },
+            self.perks: {
+                "enabled": self.configuration["perks_enabled"],
+                "execute": self.configuration["perks_on_start"],
             },
         }.items():
             if data["enabled"] and data["execute"]:
@@ -1577,6 +1585,185 @@ class Bot(object):
             drag_heroes_panel(
                 callback=level_heroes_on_screen,
             )
+
+    def perks(self):
+        """
+        Perform all perk related functionality in game, using/purchasing perks if enabled.
+        """
+        self.travel_to_master(collapsed=False)
+        self.logger.info(
+            "Using perks in game..."
+        )
+        timeout_perks_search_cnt = 0
+        timeout_perks_search_max = self.configurations["parameters"]["perks"]["icons_timeout"]
+
+        # Travel to the bottom (ish) of the master tab, we'll scroll until
+        # we've found the "clan crate" perk, since that's the last one available.
+        try:
+            while not self.search(
+                image=self.files["perks_clan_crate"],
+                region=self.configurations["regions"]["perks"]["icons_area"],
+                precision=self.configurations["parameters"]["perks"]["icons_precision"],
+            )[0]:
+                self.drag(
+                    start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                    end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                    pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                )
+                timeout_perks_search_cnt = self.handle_timeout(
+                    count=timeout_perks_search_cnt,
+                    timeout=timeout_perks_search_max,
+                )
+        except TimeoutError:
+            self.logger.info(
+                "Unable to find the \"clan_crate\" perk in game, skipping perk functionality..."
+            )
+            return
+
+        # We should be able to see all (or most) of the perks in game, clan crate is on the screen.
+        # We'll search for each enabled perk, if it isn't found, we'll scroll up a bit.
+        # Note: Reversing our list of enabled perks (bottom to top).
+        for perk in [
+            perk for perk, enabled in [
+                ("clan_crate", self.configuration["perks_enable_clan_crate"]),
+                ("doom", self.configuration["perks_enable_doom"]),
+                ("mana_potion", self.configuration["perks_enable_mana_potion"]),
+                ("make_it_rain", self.configuration["perks_enable_make_it_rain"]),
+                ("adrenaline_rush", self.configuration["perks_enable_adrenaline_rush"]),
+                ("power_of_swiping", self.configuration["perks_enable_power_of_swiping"]),
+                ("mega_boost", self.configuration["perks_enable_mega_boost"]),
+            ] if enabled
+        ]:
+            self.logger.info(
+                "Attempting to use \"%(perk)s\" perk..." % {
+                    "perk": perk,
+                }
+            )
+            timeout_perks_enabled_perk_cnt = 0
+            timeout_perks_enabled_perk_max = self.configurations["parameters"]["perks"]["enabled_perk_timeout"]
+
+            try:
+                while not self.search(
+                    image=self.files["perks_%(perk)s" % {"perk": perk}],
+                    region=self.configurations["regions"]["perks"]["icons_area"],
+                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                )[0]:
+                    # Dragging up until the enabled perk
+                    # is found.
+                    self.drag(
+                        start=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                        end=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                        pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                    )
+                    timeout_perks_enabled_perk_cnt = self.handle_timeout(
+                        count=timeout_perks_enabled_perk_cnt,
+                        timeout=timeout_perks_enabled_perk_max,
+                    )
+                # Icon is found, we'll get the position so we can add proper
+                # padding and attempt to use the perk.
+                _, position, image = self.search(
+                    image=self.files["perks_%(perk)s" % {"perk": perk}],
+                    region=self.configurations["regions"]["perks"]["icons_area"],
+                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                )
+                # Dynamically calculate the location of the upgrade button
+                # and perform a click.
+                point = (
+                    position[0] + self.configurations["parameters"]["perks"]["position_x_padding"],
+                    position[1] + self.configurations["parameters"]["perks"]["position_y_padding"],
+                )
+
+                if perk == "mega_boost":
+                    # If the free image can be found and clicked on (vip/pass), we can
+                    # exit early and just assume that the perk was used successfully.
+                    if self.find_and_click_image(
+                        image=self.files["perks_free"],
+                        region=self.configurations["regions"]["perks"]["free_area"],
+                        precision=self.configurations["parameters"]["perks"]["free_precision"],
+                        pause=self.configurations["parameters"]["perks"]["free_pause"],
+                    ):
+                        continue
+                    # Should we try and use the pi hole functionality to handle
+                    # the collection of the mega boost perk?
+                    if self.configuration["ad_blocking_enabled"]:
+                        # Follow normal flow and try to watch the ad
+                        # "Okay" button will begin the process.
+                        self.click(
+                            point=point,
+                            pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                        )
+                        while self.search(
+                            image=self.files["perks_header"],
+                            region=self.configurations["regions"]["perks"]["header_area"],
+                            precision=self.configurations["parameters"]["perks"]["header_precision"],
+                        )[0]:
+                            # Looping until the perks header has disappeared, which represents
+                            # the ad collection being finished.
+                            self.find_and_click_image(
+                                image=self.files["perks_okay"],
+                                region=self.configurations["regions"]["perks"]["okay_area"],
+                                precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                                pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                            )
+                else:
+                    self.click(
+                        point=point,
+                        pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                    )
+                    # If the header is available, the perk is not already active.
+                    if self.search(
+                        image=self.files["perks_header"],
+                        region=self.configurations["regions"]["perks"]["header_area"],
+                        precision=self.configurations["parameters"]["perks"]["header_precision"]
+                    )[0]:
+                        # Does this perk require diamonds to actually use?
+                        if self.search(
+                            image=self.files["perks_diamond"],
+                            region=self.configurations["regions"]["perks"]["diamond_area"],
+                            precision=self.configurations["parameters"]["perks"]["diamond_precision"],
+                        )[0]:
+                            if not self.configuration["perks_spend_diamonds"]:
+                                self.logger.info(
+                                    "The \"%(perk)s\" requires spending diamonds to use but diamond spending "
+                                    "is disabled, skipping..." % {
+                                        "perk": perk,
+                                    }
+                                )
+                                self.find_and_click_image(
+                                    image=self.files["perks_cancel"],
+                                    region=self.configurations["regions"]["perks"]["cancel_area"],
+                                    precision=self.configurations["parameters"]["perks"]["cancel_precision"],
+                                    pause=self.configurations["parameters"]["perks"]["cancel_pause"],
+                                )
+                                continue
+                        # Perk can be used if we get to this point...
+                        # Activating it now.
+                        self.find_and_click_image(
+                            image=self.files["perks_okay"],
+                            region=self.configurations["regions"]["perks"]["okay_area"],
+                            precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                            pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                        )
+                        if perk == "mana_potion":
+                            # Mana potion unfortunately actually closes our
+                            # master panel, we'll need to open it back up.
+                            self.click(
+                                point=self.configurations["points"]["travel"]["tabs"]["master"],
+                                pause=self.configurations["parameters"]["perks"]["post_use_open_master_pause"],
+                            )
+                    else:
+                        self.logger.info(
+                            "The \"%(perk)s\" perk is already active, skipping..." % {
+                                "perk": perk,
+                            }
+                        )
+            except TimeoutError:
+                self.logger.info(
+                    "The \"%(perk)s\" perk could not be found on the screen, skipping..." % {
+                        "perk": perk,
+                    }
+                )
+                continue
 
     @event(title="Prestige Performed")
     def prestige(self):
