@@ -488,13 +488,13 @@ class Bot(object):
         timeout_check_game_state_cnt = 0
         timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
 
-        # Attempting to travel to the main screen
-        # in game. This will for sure have our
-        # game state icons, and likely some of the
-        # travel icons.
-        self.travel_to_main_screen()
-
         while True:
+            # Attempting to travel to the main screen
+            # in game. This will for sure have our
+            # game state icons, and likely some of the
+            # travel icons.
+            self.travel_to_main_screen()
+
             try:
                 if not self.search(
                     image=[
@@ -531,34 +531,36 @@ class Bot(object):
                 self.logger.info(
                     "Unable to derive current game state, attempting to recover and restart application..."
                 )
-                if not self.window.form:
+                # Attempting to drag the screen and use the emulator screen
+                # directly to travel to the home screen to recover.
+                self.drag(
+                    start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
+                    end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
+                    pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
+                )
+                self.click(
+                    point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
+                    clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
+                    interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
+                    pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
+                    offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+                )
+                # The home screen should be active and the icon present on screen.
+                found, position, image = self.search(
+                    image=self.files["application_icon"],
+                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                )
+                if found:
                     self.logger.info(
-                        "Emulator \"form\" instance not found, terminating instance now... If you are not using a Nox emulator, "
-                        "this is the most likely reason why this process did not work, if you are using Nox and still encountering "
-                        "this error, contact the support team for additional help."
+                        "Application icon found, attempting to open game now..."
                     )
-                else:
-                    self.click(
-                        window=self.window.form,
-                        point=self.configurations["points"]["check_game_state"]["home_point"],
-                        pause=self.configurations["parameters"]["check_game_state"]["home_pause"],
-                        offset=self.configurations["parameters"]["check_game_state"]["home_offset"],
+                    self.click_image(
+                        image=image,
+                        position=position,
+                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
                     )
-                    found, position, image = self.search(
-                        image=self.files["application_icon"],
-                        region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                        precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
-                    )
-                    if found:
-                        self.logger.info(
-                            "Application icon found, attempting to open game now..."
-                        )
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
-                        )
-                        return
+                    return
                 raise GameStateException()
 
     def check_license(self):
