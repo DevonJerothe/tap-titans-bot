@@ -415,10 +415,6 @@ class Bot(object):
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "execute": self.configurations["global"]["eggs"]["eggs_on_start"],
             },
-            self.inbox: {
-                "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
-                "execute": self.configurations["global"]["inbox"]["inbox_on_start"],
-            },
             self.parse_max_stage: {
                 "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
                 "execute": self.configuration["prestige_percent_of_max_stage_enabled"],
@@ -434,6 +430,10 @@ class Bot(object):
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "execute": self.configuration["activate_skills_on_start"],
+            },
+            self.inbox: {
+                "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
+                "execute": self.configurations["global"]["inbox"]["inbox_on_start"],
             },
             # Tap comes before daily rewards because issues may crop up when
             # a fairy is displayed when trying to collect rewards. Tapping first
