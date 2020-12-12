@@ -419,8 +419,7 @@ class Bot(object):
         )
         self.schedule.every(interval=interval).seconds.do(job_func=function).tag(function.__name__)
 
-    @staticmethod
-    def cancel_scheduled_function(tags):
+    def cancel_scheduled_function(self, tags):
         """
         Cancel a scheduled function if currently scheduled to run.
         """
