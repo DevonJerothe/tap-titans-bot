@@ -389,10 +389,19 @@ class Bot(object):
             },
         }.items():
             if data["enabled"]:
-                self.schedule_function(
-                    function=function,
-                    interval=data["interval"],
-                )
+                # We wont schedule any functions that also
+                # have an interval of zero.
+                if data["interval"] > 0:
+                    self.schedule_function(
+                        function=function,
+                        interval=data["interval"],
+                    )
+                else:
+                    self.logger.debug(
+                        "Function: \"%(function)s\" is scheduled to run but the interval is set to zero, skipping..." % {
+                            "function": function.__name__,
+                        }
+                    )
 
     def schedule_function(self, function, interval):
         """
