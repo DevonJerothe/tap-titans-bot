@@ -282,11 +282,14 @@ class Bot(object):
                 ("c", self.configuration["artifacts_upgrade_tier_c"]),
             ] if enabled
         ]
+
         upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
         if self.configuration["artifacts_upgrade_artifact"]:
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
                 if artifact not in upgrade_artifacts:
                     upgrade_artifacts.append(artifact)
+        if self.configuration["artifacts_remove_max_level"]:
+            upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
 
         # ARTIFACTS INFO.
         self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
