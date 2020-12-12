@@ -912,7 +912,7 @@ class Bot(object):
         interval=0.0,
         button="left",
         offset=5,
-        pause=0.0,
+        pause=0.001,
     ):
         """
         Perform a click on the current window.
