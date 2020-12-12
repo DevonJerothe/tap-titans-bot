@@ -2332,7 +2332,7 @@ class Bot(object):
             )]
 
         for index, point in enumerate(tap):
-            if index % 5 == 0:
+            if index % self.configurations["parameters"]["tap"]["tap_fairies_modulo"] == 0:
                 # Also handle the fact that fairies could appear
                 # and be clicked on while tapping is taking place.
                 self.fairies()
