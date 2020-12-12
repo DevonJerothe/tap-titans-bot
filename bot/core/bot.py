@@ -1128,19 +1128,52 @@ class Bot(object):
         """
         Ensure a boss is being fought currently if one is available.
         """
+        timeout_fight_boss_cnt = 0
+        timeout_fight_boss_max = self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"]
+
+        initiated = False
+
         self.collapse()
-        # Using a higher than normal pause when the fight boss
-        # button is clicked on, this makes sure we don't "un-click"
-        # before the fight is initiated.
-        if self.find_and_click_image(
+
+        if not self.search(
             image=self.files["fight_boss_icon"],
             region=self.configurations["regions"]["fight_boss"]["search_area"],
-            precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-            pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
-        ):
-            self.logger.info(
-                "Boss fight initiated..."
-            )
+            precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
+        )[0]:
+            # Return early, boss fight is already in progress.
+            # or, we're almost at another fight, in which case,
+            # we can just keep going.
+            return
+        else:
+            while not initiated:
+                try:
+                    self.logger.info(
+                        "Attempting to initiate boss fight..."
+                    )
+                    # Using a higher than normal pause when the fight boss
+                    # button is clicked on, this makes sure we don't "un-click"
+                    # before the fight is initiated.
+                    if self.find_and_click_image(
+                        image=self.files["fight_boss_icon"],
+                        region=self.configurations["regions"]["fight_boss"]["search_area"],
+                        precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+                        pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
+                    ):
+                        self.logger.info(
+                            "Boss fight initiated..."
+                        )
+                        initiated = True
+                    else:
+                        timeout_fight_boss_cnt = self.handle_timeout(
+                            count=timeout_fight_boss_cnt,
+                            timeout=timeout_fight_boss_max,
+                        )
+                        # Always perform the pause sleep, regardless of the image being found.
+                        time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                except TimeoutError:
+                    self.logger.info(
+                        "Boss fight could not be initiated, skipping..."
+                    )
 
     def leave_boss(self):
         """
