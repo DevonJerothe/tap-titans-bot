@@ -201,6 +201,10 @@ class Bot(object):
                     "window": self.configuration["emulator_window"],
                 },
             )
+            # Set license offline since we are not in main loop
+            # yet (which usually handles this).
+            self.license.offline()
+            # SystemExit to just "exit".
             raise SystemExit
 
         # Begin running the bot once all dependency/configuration/files/variables
