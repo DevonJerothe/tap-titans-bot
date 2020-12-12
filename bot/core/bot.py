@@ -327,6 +327,10 @@ class Bot(object):
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
             },
+            self.tap: {
+                "enabled": self.configuration["tapping_enabled"],
+                "interval": self.configuration["tapping_interval"],
+            },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
                 "interval": self.configurations["global"]["fight_boss"]["fight_boss_interval"],
