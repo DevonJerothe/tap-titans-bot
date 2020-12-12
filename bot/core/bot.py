@@ -9,7 +9,7 @@ from license_validator.exceptions import (
 from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.scheduler import TitanScheduler
 from bot.core.imagesearch import image_search_area, click_image
-from bot.core.imagehash import compare_images
+from bot.core.imagecompare import compare_images
 from bot.core.decorators import event
 from bot.core.exceptions import (
     LicenseAuthenticationError,
