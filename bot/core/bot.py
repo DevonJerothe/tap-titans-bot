@@ -2218,17 +2218,22 @@ class Bot(object):
         for key in maps:
             if key == "heroes":
                 lst = copy.copy(self.configurations["points"]["tap"]["tap_map"][key])
-                for i in range(self.configurations["global"]["tap"]["heroes_tap_loops"]):
+                for i in range(self.configurations["parameters"]["tap"]["tap_heroes_loops"]):
                     # The "heroes" key will shuffle and reuse the map, this aids in the process
                     # of activating the astral awakening skills.
                     random.shuffle(lst)
-                    # After a shuffle, we'll also remove 30% of the tap keys, this speeds up
-                    # the process so we don't tap way too many points.
-                    lst = [point for point in lst if random.random() > 0.15]
+                    # After a shuffle, we'll also remove some tap points if they dont surpass a certain
+                    # percent threshold configured in the backend.
+                    lst = [
+                        point for point in lst if
+                        random.random() > self.configurations["parameters"]["tap"]["tap_heroes_remove_percent"]
+                    ]
                     tap.extend(lst)
             else:
                 tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
 
+        # Remove any points that could open up the
+        # one time offer prompt.
         if self.search(
             image=self.files["one_time_offer"],
             region=self.configurations["regions"]["tap"]["one_time_offer_area"],
@@ -2240,6 +2245,14 @@ class Bot(object):
                 point=point,
                 region=self.configurations["regions"]["tap"]["one_time_offer_prevent_area"],
             )]
+        # Remove any points that could collect pieces
+        # of available equipment in game.
+        if not self.configuration["tapping_collect_equipment"]:
+            tap = [point for point in tap if not self.point_is_region(
+                point=point,
+                region=self.configurations["regions"]["tap"]["collect_equipment_prevent_area"],
+            )]
+
         for index, point in enumerate(tap):
             if index % 5 == 0:
                 # Also handle the fact that fairies could appear
