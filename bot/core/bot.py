@@ -599,6 +599,21 @@ class Bot(object):
                         pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
                     )
                     return
+                else:
+                    self.logger.info(
+                        "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
+                        "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
+                        "and visible."
+                    )
+                    self.logger.info(
+                        "If the application icon is visible and you're still getting this error, please contact support for "
+                        "additional help."
+                    )
+                    self.logger.info(
+                        "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
+                        "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
+                        "to travel to the home screen."
+                    )
                 raise GameStateException()
 
     def check_license(self):
