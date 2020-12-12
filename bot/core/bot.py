@@ -7,10 +7,16 @@ from license_validator.exceptions import (
 )
 
 from bot.core.window import WindowHandler, WindowNotFoundError
+from bot.core.scheduler import TitanScheduler
 from bot.core.imagesearch import image_search_area, click_image
 from bot.core.imagehash import compare_images
 from bot.core.decorators import event
-from bot.core.exceptions import LicenseAuthenticationError, GameStateException
+from bot.core.exceptions import (
+    LicenseAuthenticationError,
+    GameStateException,
+    StoppedException,
+    PausedException,
+)
 from bot.core.utilities import (
     create_logger,
     decrypt_secret,
@@ -24,7 +30,6 @@ from pytesseract import pytesseract
 from PIL import Image
 
 import sentry_sdk
-import schedule
 import random
 import copy
 import numpy
@@ -70,6 +75,12 @@ class Bot(object):
         # Function is used to determine when pause and resume should take
         # place during runtime.
         self.pause_func = pause_func
+
+        # Custom scheduler is used currently to handle
+        # stop_func functionality when running pending
+        # jobs, this avoids large delays when waiting
+        # to pause/stop
+        self.schedule = TitanScheduler()
 
         self.session = session
         self.license = license_obj
@@ -305,7 +316,7 @@ class Bot(object):
         Loop through each available function used during runtime, setting up
         and configuring a scheduler for each one.
         """
-        schedule.clear()
+        self.schedule.clear()
 
         for function, data in {
             self.check_game_state: {
@@ -389,7 +400,7 @@ class Bot(object):
                 "interval": interval,
             }
         )
-        schedule.every(interval=interval).seconds.do(job_func=function).tag(function.__name__)
+        self.schedule.every(interval=interval).seconds.do(job_func=function).tag(function.__name__)
 
     @staticmethod
     def cancel_scheduled_function(tags):
@@ -399,7 +410,7 @@ class Bot(object):
         if not isinstance(tags, list):
             tags = list(tags)
         for tag in tags:
-            schedule.clear(tag)
+            self.schedule.clear(tag)
 
     def execute_startup_functions(self):
         """
@@ -2615,21 +2626,24 @@ class Bot(object):
             self.execute_startup_functions()
 
             while not self.stop_func():
-                if self.pause_func():
-                    # Currently paused through the GUI.
-                    # Just wait and sleep slightly in between checks.
-                    if self.stream.last_message != "Paused...":
-                        self.logger.info(
-                            "Paused..."
-                        )
-                    time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
-                else:
-                    # Ensure any pending scheduled jobs are executed at the beginning
-                    # of our loop, each time.
-                    schedule.run_pending()
-                    # We'll always perform our swipe function if nothing
-                    # is currently scheduled or pending.
-                    self.tap()
+                try:
+                    if self.pause_func():
+                        # Currently paused through the GUI.
+                        # Just wait and sleep slightly in between checks.
+                        if self.stream.last_message != "Paused...":
+                            self.logger.info(
+                                "Paused..."
+                            )
+                        time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
+                    else:
+                        # Ensure any pending scheduled jobs are executed at the beginning
+                        # of our loop, each time.
+                        self.schedule.run_pending()
+                except PausedException:
+                    # Paused exception could be raised through the scheduler, in which
+                    # case, we'll pass here but the next iteration should catch that and
+                    # we wont keep running until resumed (or stopped).
+                    pass
 
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -2656,6 +2670,10 @@ class Bot(object):
             self.logger.info(
                 "An authentication error has occurred. Ending session now..."
             )
+        except StoppedException:
+            # Pass when stopped exception is encountered, skip right to our
+            # finally block to handle logging and cleanup.
+            pass
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
