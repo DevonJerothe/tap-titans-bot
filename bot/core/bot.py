@@ -1829,21 +1829,21 @@ class Bot(object):
                     point=self.configurations["points"]["tournaments"]["tournaments_icon"],
                     pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
                 )
-                self.find_and_click_image(
+                if self.find_and_click_image(
                     image=self.files["tournaments_join"],
                     region=self.configurations["regions"]["tournaments"]["join_area"],
                     precision=self.configurations["parameters"]["tournaments"]["join_precision"],
                     pause=self.configurations["parameters"]["tournaments"]["join_pause"],
-                )
-                self.logger.info(
-                    "Performing tournament prestige now..."
-                )
-                self.find_and_click_image(
-                    image=self.files["prestige_confirm_confirm_icon"],
-                    region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
-                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
-                )
+                ):
+                    self.logger.info(
+                        "Performing tournament prestige now..."
+                    )
+                    self.find_and_click_image(
+                        image=self.files["prestige_confirm_confirm_icon"],
+                        region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                        precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                        pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                    )
             # Tournament is in a "red" state, one we joined is now
             # over and rewards are available.
             elif self.point_is_color_range(
@@ -1854,18 +1854,21 @@ class Bot(object):
                     point=self.configurations["points"]["tournaments"]["tournaments_icon"],
                     pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
                 )
-                self.find_and_click_image(
+                if self.find_and_click_image(
                     image=self.files["tournaments_collect"],
                     region=self.configurations["regions"]["tournaments"]["collect_area"],
                     precision=self.configurations["parameters"]["tournaments"]["collect_precision"],
                     pause=self.configurations["parameters"]["tournaments"]["collect_pause"],
-                )
-                self.click(
-                    point=self.configurations["points"]["main_screen"]["top_middle"],
-                    clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
-                    interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
-                    pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
-                )
+                ):
+                    self.logger.info(
+                        "Collecting tournament rewards now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
+                    )
 
         if not tournament_prestige:
             self.logger.info(
