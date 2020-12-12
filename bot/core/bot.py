@@ -1286,7 +1286,7 @@ class Bot(object):
                             )
                     except TimeoutError:
                         self.logger.info(
-                            "Unable to handle fairy ad through pi hole mechanism... Skipping ad collection."
+                            "Unable to handle fairy ad through ad blocking mechanism, skipping..."
                         )
                         self.click_image(
                             image=image,
@@ -1767,7 +1767,7 @@ class Bot(object):
                         pause=self.configurations["parameters"]["perks"]["free_pause"],
                     ):
                         continue
-                    # Should we try and use the pi hole functionality to handle
+                    # Should we try and use the ad blocking functionality to handle
                     # the collection of the mega boost perk?
                     if self.configuration["ad_blocking_enabled"]:
                         # Follow normal flow and try to watch the ad
