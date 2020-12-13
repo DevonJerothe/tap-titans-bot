@@ -7,10 +7,16 @@ from license_validator.exceptions import (
 )
 
 from bot.core.window import WindowHandler, WindowNotFoundError
+from bot.core.scheduler import TitanScheduler
 from bot.core.imagesearch import image_search_area, click_image
-from bot.core.imagehash import compare_images
+from bot.core.imagecompare import compare_images
 from bot.core.decorators import event
-from bot.core.exceptions import LicenseAuthenticationError, GameStateException
+from bot.core.exceptions import (
+    LicenseAuthenticationError,
+    GameStateException,
+    StoppedException,
+    PausedException,
+)
 from bot.core.utilities import (
     create_logger,
     decrypt_secret,
@@ -24,7 +30,6 @@ from pytesseract import pytesseract
 from PIL import Image
 
 import sentry_sdk
-import schedule
 import random
 import copy
 import numpy
@@ -70,6 +75,12 @@ class Bot(object):
         # Function is used to determine when pause and resume should take
         # place during runtime.
         self.pause_func = pause_func
+
+        # Custom scheduler is used currently to handle
+        # stop_func functionality when running pending
+        # jobs, this avoids large delays when waiting
+        # to pause/stop
+        self.schedule = TitanScheduler()
 
         self.session = session
         self.license = license_obj
@@ -190,6 +201,10 @@ class Bot(object):
                     "window": self.configuration["emulator_window"],
                 },
             )
+            # Set license offline since we are not in main loop
+            # yet (which usually handles this).
+            self.license.offline()
+            # SystemExit to just "exit".
             raise SystemExit
 
         # Begin running the bot once all dependency/configuration/files/variables
@@ -282,11 +297,14 @@ class Bot(object):
                 ("c", self.configuration["artifacts_upgrade_tier_c"]),
             ] if enabled
         ]
+
         upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
         if self.configuration["artifacts_upgrade_artifact"]:
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
                 if artifact not in upgrade_artifacts:
                     upgrade_artifacts.append(artifact)
+        if self.configuration["artifacts_remove_max_level"]:
+            upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
 
         # ARTIFACTS INFO.
         self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
@@ -302,7 +320,7 @@ class Bot(object):
         Loop through each available function used during runtime, setting up
         and configuring a scheduler for each one.
         """
-        schedule.clear()
+        self.schedule.clear()
 
         for function, data in {
             self.check_game_state: {
@@ -312,6 +330,10 @@ class Bot(object):
             self.check_license: {
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
+            },
+            self.tap: {
+                "enabled": self.configuration["tapping_enabled"],
+                "interval": self.configuration["tapping_interval"],
             },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
@@ -371,10 +393,19 @@ class Bot(object):
             },
         }.items():
             if data["enabled"]:
-                self.schedule_function(
-                    function=function,
-                    interval=data["interval"],
-                )
+                # We wont schedule any functions that also
+                # have an interval of zero.
+                if data["interval"] > 0:
+                    self.schedule_function(
+                        function=function,
+                        interval=data["interval"],
+                    )
+                else:
+                    self.logger.debug(
+                        "Function: \"%(function)s\" is scheduled to run but the interval is set to zero, skipping..." % {
+                            "function": function.__name__,
+                        }
+                    )
 
     def schedule_function(self, function, interval):
         """
@@ -386,17 +417,16 @@ class Bot(object):
                 "interval": interval,
             }
         )
-        schedule.every(interval=interval).seconds.do(job_func=function).tag(function.__name__)
+        self.schedule.every(interval=interval).seconds.do(job_func=function).tag(function.__name__)
 
-    @staticmethod
-    def cancel_scheduled_function(tags):
+    def cancel_scheduled_function(self, tags):
         """
         Cancel a scheduled function if currently scheduled to run.
         """
         if not isinstance(tags, list):
             tags = list(tags)
         for tag in tags:
-            schedule.clear(tag)
+            self.schedule.clear(tag)
 
     def execute_startup_functions(self):
         """
@@ -569,6 +599,21 @@ class Bot(object):
                         pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
                     )
                     return
+                else:
+                    self.logger.info(
+                        "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
+                        "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
+                        "and visible."
+                    )
+                    self.logger.info(
+                        "If the application icon is visible and you're still getting this error, please contact support for "
+                        "additional help."
+                    )
+                    self.logger.info(
+                        "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
+                        "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
+                        "to travel to the home screen."
+                    )
                 raise GameStateException()
 
     def check_license(self):
@@ -867,7 +912,7 @@ class Bot(object):
         interval=0.0,
         button="left",
         offset=5,
-        pause=0.0,
+        pause=0.001,
     ):
         """
         Perform a click on the current window.
@@ -1110,19 +1155,52 @@ class Bot(object):
         """
         Ensure a boss is being fought currently if one is available.
         """
+        timeout_fight_boss_cnt = 0
+        timeout_fight_boss_max = self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"]
+
+        initiated = False
+
         self.collapse()
-        # Using a higher than normal pause when the fight boss
-        # button is clicked on, this makes sure we don't "un-click"
-        # before the fight is initiated.
-        if self.find_and_click_image(
+
+        if not self.search(
             image=self.files["fight_boss_icon"],
             region=self.configurations["regions"]["fight_boss"]["search_area"],
-            precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-            pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
-        ):
-            self.logger.info(
-                "Boss fight initiated..."
-            )
+            precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
+        )[0]:
+            # Return early, boss fight is already in progress.
+            # or, we're almost at another fight, in which case,
+            # we can just keep going.
+            return
+        else:
+            while not initiated:
+                try:
+                    self.logger.info(
+                        "Attempting to initiate boss fight..."
+                    )
+                    # Using a higher than normal pause when the fight boss
+                    # button is clicked on, this makes sure we don't "un-click"
+                    # before the fight is initiated.
+                    if self.find_and_click_image(
+                        image=self.files["fight_boss_icon"],
+                        region=self.configurations["regions"]["fight_boss"]["search_area"],
+                        precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+                        pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
+                    ):
+                        self.logger.info(
+                            "Boss fight initiated..."
+                        )
+                        initiated = True
+                    else:
+                        timeout_fight_boss_cnt = self.handle_timeout(
+                            count=timeout_fight_boss_cnt,
+                            timeout=timeout_fight_boss_max,
+                        )
+                        # Always perform the pause sleep, regardless of the image being found.
+                        time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                except TimeoutError:
+                    self.logger.info(
+                        "Boss fight could not be initiated, skipping..."
+                    )
 
     def leave_boss(self):
         """
@@ -1208,7 +1286,7 @@ class Bot(object):
                             )
                     except TimeoutError:
                         self.logger.info(
-                            "Unable to handle fairy ad through pi hole mechanism... Skipping ad collection."
+                            "Unable to handle fairy ad through ad blocking mechanism, skipping..."
                         )
                         self.click_image(
                             image=image,
@@ -1689,7 +1767,7 @@ class Bot(object):
                         pause=self.configurations["parameters"]["perks"]["free_pause"],
                     ):
                         continue
-                    # Should we try and use the pi hole functionality to handle
+                    # Should we try and use the ad blocking functionality to handle
                     # the collection of the mega boost perk?
                     if self.configuration["ad_blocking_enabled"]:
                         # Follow normal flow and try to watch the ad
@@ -1811,21 +1889,21 @@ class Bot(object):
                     point=self.configurations["points"]["tournaments"]["tournaments_icon"],
                     pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
                 )
-                self.find_and_click_image(
+                if self.find_and_click_image(
                     image=self.files["tournaments_join"],
                     region=self.configurations["regions"]["tournaments"]["join_area"],
                     precision=self.configurations["parameters"]["tournaments"]["join_precision"],
                     pause=self.configurations["parameters"]["tournaments"]["join_pause"],
-                )
-                self.logger.info(
-                    "Performing tournament prestige now..."
-                )
-                self.find_and_click_image(
-                    image=self.files["prestige_confirm_confirm_icon"],
-                    region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
-                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
-                )
+                ):
+                    self.logger.info(
+                        "Performing tournament prestige now..."
+                    )
+                    self.find_and_click_image(
+                        image=self.files["prestige_confirm_confirm_icon"],
+                        region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                        precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                        pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                    )
             # Tournament is in a "red" state, one we joined is now
             # over and rewards are available.
             elif self.point_is_color_range(
@@ -1836,18 +1914,21 @@ class Bot(object):
                     point=self.configurations["points"]["tournaments"]["tournaments_icon"],
                     pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
                 )
-                self.find_and_click_image(
+                if self.find_and_click_image(
                     image=self.files["tournaments_collect"],
                     region=self.configurations["regions"]["tournaments"]["collect_area"],
                     precision=self.configurations["parameters"]["tournaments"]["collect_precision"],
                     pause=self.configurations["parameters"]["tournaments"]["collect_pause"],
-                )
-                self.click(
-                    point=self.configurations["points"]["main_screen"]["top_middle"],
-                    clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
-                    interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
-                    pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
-                )
+                ):
+                    self.logger.info(
+                        "Collecting tournament rewards now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["tournaments"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["tournaments"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["tournaments"]["post_collect_pause"],
+                    )
 
         if not tournament_prestige:
             self.logger.info(
@@ -2215,17 +2296,22 @@ class Bot(object):
         for key in maps:
             if key == "heroes":
                 lst = copy.copy(self.configurations["points"]["tap"]["tap_map"][key])
-                for i in range(self.configurations["global"]["tap"]["heroes_tap_loops"]):
+                for i in range(self.configurations["parameters"]["tap"]["tap_heroes_loops"]):
                     # The "heroes" key will shuffle and reuse the map, this aids in the process
                     # of activating the astral awakening skills.
                     random.shuffle(lst)
-                    # After a shuffle, we'll also remove 30% of the tap keys, this speeds up
-                    # the process so we don't tap way too many points.
-                    lst = [point for point in lst if random.random() > 0.15]
+                    # After a shuffle, we'll also remove some tap points if they dont surpass a certain
+                    # percent threshold configured in the backend.
+                    lst = [
+                        point for point in lst if
+                        random.random() > self.configurations["parameters"]["tap"]["tap_heroes_remove_percent"]
+                    ]
                     tap.extend(lst)
             else:
                 tap.extend(self.configurations["points"]["tap"]["tap_map"][key])
 
+        # Remove any points that could open up the
+        # one time offer prompt.
         if self.search(
             image=self.files["one_time_offer"],
             region=self.configurations["regions"]["tap"]["one_time_offer_area"],
@@ -2237,8 +2323,16 @@ class Bot(object):
                 point=point,
                 region=self.configurations["regions"]["tap"]["one_time_offer_prevent_area"],
             )]
+        # Remove any points that could collect pieces
+        # of available equipment in game.
+        if not self.configuration["tapping_collect_equipment"]:
+            tap = [point for point in tap if not self.point_is_region(
+                point=point,
+                region=self.configurations["regions"]["tap"]["collect_equipment_prevent_area"],
+            )]
+
         for index, point in enumerate(tap):
-            if index % 5 == 0:
+            if index % self.configurations["parameters"]["tap"]["tap_fairies_modulo"] == 0:
                 # Also handle the fact that fairies could appear
                 # and be clicked on while tapping is taking place.
                 self.fairies()
@@ -2599,21 +2693,24 @@ class Bot(object):
             self.execute_startup_functions()
 
             while not self.stop_func():
-                if self.pause_func():
-                    # Currently paused through the GUI.
-                    # Just wait and sleep slightly in between checks.
-                    if self.stream.last_message != "Paused...":
-                        self.logger.info(
-                            "Paused..."
-                        )
-                    time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
-                else:
-                    # Ensure any pending scheduled jobs are executed at the beginning
-                    # of our loop, each time.
-                    schedule.run_pending()
-                    # We'll always perform our swipe function if nothing
-                    # is currently scheduled or pending.
-                    self.tap()
+                try:
+                    if self.pause_func():
+                        # Currently paused through the GUI.
+                        # Just wait and sleep slightly in between checks.
+                        if self.stream.last_message != "Paused...":
+                            self.logger.info(
+                                "Paused..."
+                            )
+                        time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
+                    else:
+                        # Ensure any pending scheduled jobs are executed at the beginning
+                        # of our loop, each time.
+                        self.schedule.run_pending()
+                except PausedException:
+                    # Paused exception could be raised through the scheduler, in which
+                    # case, we'll pass here but the next iteration should catch that and
+                    # we wont keep running until resumed (or stopped).
+                    pass
 
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -2640,6 +2737,10 @@ class Bot(object):
             self.logger.info(
                 "An authentication error has occurred. Ending session now..."
             )
+        except StoppedException:
+            # Pass when stopped exception is encountered, skip right to our
+            # finally block to handle logging and cleanup.
+            pass
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
