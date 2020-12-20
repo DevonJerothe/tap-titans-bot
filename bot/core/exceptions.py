@@ -16,3 +16,7 @@ class StoppedException(Exception):
 
 class PausedException(Exception):
     pass
+
+
+class ExportContentsException(Exception):
+    pass
