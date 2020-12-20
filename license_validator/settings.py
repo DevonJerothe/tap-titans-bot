@@ -37,11 +37,14 @@ VALIDATION_FLUSH_URL = "%(validation_licenses_url)s/%(flush_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "flush_endpoint": "flush",
 }
-VALIDATION_EVENT_URL = "%(validation_licenses_url)s/%(event_endpoint)s" % {
+VALIDATION_SESSION_URL = "%(validation_licenses_url)s/%(session_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
-    "event_endpoint": "event",
+    "session_endpoint": "session",
 }
-
+VALIDATION_PRESTIGE_URL = "%(validation_licenses_url)s/%(prestige_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "prestige_endpoint": "session/prestige",
+}
 # Build paths inside our project like this: BASE_DIRECTORY / "subdir".
 PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
 # The user directory and our validation name value is used
