@@ -102,3 +102,107 @@ def set_dependencies(
         # after the file is created.
         with zipfile.ZipFile(file_path, mode="r") as zip_ref:
             zip_ref.extractall(path=dependencies_directory)
+
+
+def changed_contents(
+    export_contents,
+    original_contents,
+):
+    """
+    Given two dictionaries, create a new dictionary that only holds the set
+    of dictionary keys/values that have changed between the two.
+    """
+    def calculate_difference(value, original_value):
+        if value == "True" and original_value == "False":
+            return value
+        try:
+            original_value, value = (
+                float(original_value),
+                float(value),
+            )
+        except ValueError:
+            original_value, value = (
+                0,
+                0,
+            )
+        return "{:n}".format(float(int(value - original_value)))
+
+    new_contents = {
+        "playerStats": {},
+        "artifacts": {},
+    }
+
+    for key in new_contents:
+        for original_key, original_val in original_contents[key].items():
+            export_key, export_val = (
+                original_key,
+                export_contents[key][original_key],
+            )
+            if isinstance(original_val, dict):
+                for original_dict_key, original_dict_val in original_val.items():
+                    export_dict_key, export_dict_val = (
+                        original_dict_key,
+                        export_contents[key][original_key][original_dict_key],
+                    )
+                    if original_dict_val != export_dict_val:
+                        if not new_contents[key].get(original_key):
+                            new_contents[key][original_key] = {}
+                        new_contents[key][original_key].setdefault(original_dict_key, calculate_difference(
+                            value=export_dict_val,
+                            original_value=original_dict_val,
+                        ))
+            else:
+                if original_val != export_val:
+                    new_contents[key][original_key] = calculate_difference(
+                        value=export_val,
+                        original_value=original_val,
+                    )
+    return new_contents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
