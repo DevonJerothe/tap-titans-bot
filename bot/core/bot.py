@@ -303,17 +303,33 @@ class Bot(object):
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
                 if artifact not in upgrade_artifacts:
                     upgrade_artifacts.append(artifact)
+        if self.configuration["artifacts_ignore_artifact"]:
+            for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
+                if artifact in upgrade_artifacts:
+                    upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
         if self.configuration["artifacts_remove_max_level"]:
             upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
+        if self.configuration["artifacts_shuffle"]:
+            random.shuffle(upgrade_artifacts)
 
-        # ARTIFACTS INFO.
+        # Artifacts Data.
+        # ------------------
+        # "upgrade_artifacts" - cycled (iter) if available.
+        # "next_artifact_upgrade" - first available from "upgrade_artifacts" if available.
         self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if upgrade_artifacts else None
-        # SESSION LEVEL INFO.
-        self.current_stage = None
-        self.max_stage = None
-        # PER PRESTIGE INFO.
+
+        # Per Prestige Data.
+        # ------------------
+        # "master_levelled" - Store a flag to denote the master being levelled.
         self.master_levelled = False
+
+        self.logger.debug(
+            "Additional Configurations: Loaded..."
+        )
+        self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
+        self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
+        self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
 
     def schedule_functions(self):
         """
