@@ -2695,6 +2695,8 @@ class Bot(object):
             while not self.stop_func():
                 try:
                     if self.pause_func():
+                        if not self.pause_date:
+                            self.pause_date = datetime.datetime.now()
                         # Currently paused through the GUI.
                         # Just wait and sleep slightly in between checks.
                         if self.stream.last_message != "Paused...":
@@ -2703,6 +2705,11 @@ class Bot(object):
                             )
                         time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
                     else:
+                        if self.pause_date:
+                            # We were paused before, fixup our schedule and then
+                            # we'll resume.
+                            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
+                            self.pause_date = None
                         # Ensure any pending scheduled jobs are executed at the beginning
                         # of our loop, each time.
                         self.schedule.run_pending()

@@ -43,3 +43,11 @@ class TitanScheduler(Scheduler):
                 if not self.pause_func():
                     raise PausedException()
             self._run_job(job)
+
+    def pad_jobs(self, timedelta):
+        """
+        Pad all existing jobs with the specified timedelta. This will modify the next run date for each job
+        and add the timedelta to them.
+        """
+        for job in self.jobs:
+            job.next_run += timedelta
