@@ -10,12 +10,12 @@ from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.scheduler import TitanScheduler
 from bot.core.imagesearch import image_search_area, click_image
 from bot.core.imagecompare import compare_images
-from bot.core.decorators import event
 from bot.core.exceptions import (
     LicenseAuthenticationError,
     GameStateException,
     StoppedException,
     PausedException,
+    ExportContentsException,
 )
 from bot.core.utilities import (
     create_logger,
@@ -28,6 +28,8 @@ from pyautogui import FailSafeException
 from PIL import Image
 
 import sentry_sdk
+import pyperclip
+import datetime
 import random
 import copy
 import numpy
@@ -61,9 +63,12 @@ class Bot(object):
         self.application_version = application_version
         self.application_discord = application_discord
 
-        self.files = {}           # Program Files.
-        self.configurations = {}  # Global Program Configurations
-        self.configuration = {}   # Local Bot Configurations.
+        self.files = {}             # Program Files.
+        self.configurations = {}    # Global Program Configurations
+        self.configuration = {}     # Local Bot Configurations.
+
+        self.export_orig_contents = {}     # Store the original set of export data.
+        self.export_current_contents = {}  # Most recent contents.
 
         # stop_func is used to correctly handle our threading functionality.
         # A ``bot`` is initialized through some method that invokes a new thread.
@@ -331,6 +336,10 @@ class Bot(object):
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
             },
+            self.export_data: {
+                "enabled": self.configuration["export_data_enabled"],
+                "interval": self.configuration["export_data_interval"],
+            },
             self.tap: {
                 "enabled": self.configuration["tapping_enabled"],
                 "interval": self.configuration["tapping_interval"],
@@ -428,6 +437,10 @@ class Bot(object):
             self.check_game_state: {
                 "enabled": self.configuration["crash_recovery_enabled"],
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
+            },
+            self.export_data: {
+                "enabled": self.configuration["export_data_enabled"],
+                "execute": self.configurations["global"]["export_data"]["export_data_on_start"],
             },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
@@ -1676,13 +1689,19 @@ class Bot(object):
                 )
                 continue
 
-    @event(title="Prestige Performed")
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
         """
         self.travel_to_master()
         self.leave_boss()
+
+        self.logger.info(
+            "Attempting to prestige in game now..."
+        )
+        self.export_prestige(prestige_contents={
+            "upgradeArtifact": self.next_artifact_upgrade,
+        })
 
         tournament_prestige = False
 
@@ -1729,6 +1748,8 @@ class Bot(object):
                         image=self.files["prestige_confirm_confirm_icon"],
                         region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
                         precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                        clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
+                        interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
                         pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
                     )
             # Tournament is in a "red" state, one we joined is now
@@ -1777,6 +1798,8 @@ class Bot(object):
                 image=self.files["prestige_confirm_confirm_icon"],
                 region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
                 precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
+                interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
                 pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
             )
             # Waiting here through the confirm_confirm_icon_pause for the prestige
@@ -1924,6 +1947,13 @@ class Bot(object):
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
         self.master_levelled = False
 
+        # Once the prestige has finished, we need to update our most upto date
+        # set of exported data, from here, we can then figure out whats changed
+        # and send a new session event. If this isn't enabled, we at least get
+        # a prestige sent along above.
+        if self.configuration["export_data_enabled"]:
+            self.export_data()
+
         # Handle some forcing of certain functionality post prestige below.
         # We do this once to ensure the game is up and running efficiently
         # before beginning scheduled functionality again.
@@ -1964,9 +1994,6 @@ class Bot(object):
                 interval=interval,
             )
         else:
-            self.logger.info(
-                "Executing prestige now..."
-            )
             self.prestige()
 
     def prestige_close_to_max(self):
@@ -2153,6 +2180,96 @@ class Bot(object):
                     "No panels could be found to collapse..."
                 )
                 break
+
+    def export_data(self):
+        """
+        Open up the settings in game and export user data.
+
+        This information contains a lot of very useful information, the information
+        is saved to the users clipboard which we can access and store.
+        """
+        self.travel_to_master()
+
+        # Opening up the master screen will make sure the export data
+        # function has the most up to date information.
+        self.logger.info(
+            "Opening master page to ensure exported data is up to date..."
+        )
+        self.click(
+            point=self.configurations["points"]["export_data"]["master_screen"],
+            pause=self.configurations["parameters"]["export_data"]["master_screen_pause"],
+        )
+        while not self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["travel"]["exit_area"],
+            precision=self.configurations["parameters"]["travel"]["exit_precision"],
+            pause=self.configurations["parameters"]["travel"]["exit_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
+
+        self.logger.info(
+            "Attempting to export data now..."
+        )
+        while not self.search(
+            image=self.files["options_header"],
+            region=self.configurations["regions"]["export_data"]["options_header_area"],
+            precision=self.configurations["parameters"]["export_data"]["options_header_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["export_data"]["options_icon"],
+                pause=self.configurations["parameters"]["export_data"]["options_icon_pause"],
+            )
+
+        while not self.find_and_click_image(
+            image=self.files["options_export"],
+            region=self.configurations["regions"]["export_data"]["options_export_area"],
+            precision=self.configurations["parameters"]["export_data"]["options_export_precision"],
+            pause=self.configurations["parameters"]["export_data"]["options_export_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["export_data"]["options_export_pause"])
+        while not self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["travel"]["exit_area"],
+            precision=self.configurations["parameters"]["travel"]["exit_precision"],
+            pause=self.configurations["parameters"]["travel"]["exit_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
+
+        self.logger.info(
+            "Export data has been copied to the clipboard..."
+        )
+        # Grab the current clipboard contents...
+        # It should be in the proper json format.
+        contents = pyperclip.paste()
+
+        try:
+            # Always setting our exported content on export.
+            # We handle the "original" set of exported data below.
+            contents = json.loads(pyperclip.paste())
+            self.export_contents = {
+                "playerStats": contents["playerStats"],
+                "artifacts": contents["artifacts"],
+            }
+            self.logger.info(
+                "Exported data has been loaded successfully..."
+            )
+        except json.JSONDecodeError:
+            raise ExportContentsException()
+
+        if not self.export_orig_contents:
+            self.export_orig_contents = copy.deepcopy(self.export_contents)
+            # original_contents is left blank to ensure we're only sending
+            # over the original set of export data.
+            self.export_session(
+                export_contents=self.export_contents,
+            )
+        # If the export contents have differed in some way,
+        # we'll update our session and handle "changed" values.
+        elif self.export_orig_contents != self.export_contents:
+            self.export_session(
+                export_contents=self.export_contents,
+                original_contents=self.export_orig_contents,
+            )
 
     def travel(
         self,
@@ -2425,7 +2542,31 @@ class Bot(object):
                 # assume that no tabs are open, breaking!
                 break
 
-    @event(title="{application_name} Session Started", description="New Bot Session Started...")
+    def export_session(self, export_contents=None, original_contents=None, extra={}):
+        """
+        Export a session to the users licence backend.
+        """
+        self.logger.info(
+            "Attempting to export session now..."
+        )
+        self.license.export_session(
+            export_contents=export_contents,
+            original_contents=original_contents,
+            extra={
+                "version": self.application_version,
+                "configuration": self.configuration["configuration_name"],
+                "window": self.window.__str__(),
+            }
+        )
+
+    def export_prestige(self, prestige_contents):
+        self.logger.info(
+            "Attempting to export prestige now..."
+        )
+        self.license.export_prestige(
+            prestige_contents=prestige_contents,
+        )
+
     def run(self):
         """
         Begin main runtime loop for bot functionality.
@@ -2452,6 +2593,10 @@ class Bot(object):
 
         try:
             self.configure_additional()
+            # Ensure that a session is still available even if data
+            # exports are disabled.
+            if not self.configuration["export_data_enabled"]:
+                self.export_session()
             # Right before running, make sure any scheduled functions
             # are configured properly.
             self.schedule_functions()
@@ -2498,6 +2643,10 @@ class Bot(object):
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
                 "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
+            )
+        except ExportContentsException:
+            self.logger.info(
+                "An error occurred while attempting to export data from the game."
             )
         except KeyError as err:
             self.logger.info(
