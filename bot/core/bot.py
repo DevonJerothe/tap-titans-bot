@@ -20,13 +20,11 @@ from bot.core.exceptions import (
 from bot.core.utilities import (
     create_logger,
     decrypt_secret,
-    most_common_result,
-    calculate_percent,
 )
 
 from itertools import cycle
 from pyautogui import FailSafeException
-from pytesseract import pytesseract
+
 from PIL import Image
 
 import sentry_sdk
@@ -230,21 +228,7 @@ class Bot(object):
         """
         Configure the dependencies used by the bot.
         """
-        self.logger.info("Configuring dependencies...")
-        # For our purposes, we definitely need our pytesseract to be initialized
-        # using the correct directory, we can expect it to be present in the
-        # dependencies directory for our application.
-        pytesseract.tesseract_cmd = os.path.join(
-            self.license.program_dependencies_directory,
-            "tesseract",
-            "tesseract.exe",
-        )
-        self.logger.debug(
-            "Dependencies: Loaded..."
-        )
-        self.logger.debug("Tesseract CMD: %(tesseract_cmd)s" % {
-            "tesseract_cmd": pytesseract.tesseract_cmd,
-        })
+        pass
 
     def configure_files(self):
         """
@@ -395,17 +379,9 @@ class Bot(object):
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
             },
-            self.prestige_stage: {
-                "enabled": self.configuration["prestige_stage_enabled"],
-                "interval": self.configurations["global"]["prestige_stage"]["prestige_stage_interval"],
-            },
             self.prestige_close_to_max: {
                 "enabled": self.configuration["prestige_close_to_max_enabled"],
                 "interval": self.configurations["global"]["prestige_close_to_max"]["prestige_close_to_max_interval"],
-            },
-            self.prestige_percent_of_max_stage: {
-                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
-                "interval": self.configurations["global"]["prestige_percent_of_max_stage"]["prestige_percent_of_max_stage_interval"]
             },
         }.items():
             if data["enabled"]:
@@ -460,10 +436,6 @@ class Bot(object):
             self.eggs: {
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "execute": self.configurations["global"]["eggs"]["eggs_on_start"],
-            },
-            self.parse_max_stage: {
-                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
-                "execute": self.configuration["prestige_percent_of_max_stage_enabled"],
             },
             self.level_master: {
                 "enabled": self.configuration["level_master_enabled"],
@@ -1985,9 +1957,7 @@ class Bot(object):
             # if it's present so the options don't clash.
             self.cancel_scheduled_function(tags=[
                 self.prestige.__name__,
-                self.prestige_stage.__name__,
                 self.prestige_close_to_max.__name__,
-                self.prestige_percent_of_max_stage.__name__,
             ])
             self.schedule_function(
                 function=self.prestige,
@@ -1998,28 +1968,6 @@ class Bot(object):
                 "Executing prestige now..."
             )
             self.prestige()
-
-    def prestige_stage(self):
-        """
-        Perform a prestige in game when the current stage exceeds the configured limit.
-        """
-        self.collapse()
-        self.logger.info(
-            "Checking current stage to determine if prestige should be performed..."
-        )
-
-        self.parse_current_stage()
-        current_stage = self.current_stage
-        require_stage = self.configuration["prestige_stage_threshold"]
-
-        if current_stage and current_stage >= require_stage:
-            self.logger.info(
-                "Current stage: \"%(current_stage)s\" exceeds the configured threshold: \"%(require_stage)s\"..." % {
-                    "current_stage": current_stage,
-                    "require_stage": require_stage,
-                }
-            )
-            self.prestige_execute_or_schedule()
 
     def prestige_close_to_max(self):
         """
@@ -2090,42 +2038,6 @@ class Bot(object):
             self.logger.info(
                 "Prestige is ready..."
             )
-            self.prestige_execute_or_schedule()
-
-    def prestige_percent_of_max_stage(self):
-        """
-        Perform a prestige in game when the user has reached the stage required that represents
-        a certain percent of their current maximum stage.
-        """
-        self.collapse()
-        self.logger.info(
-            "Checking current stage to determine if percent prestige should be performed..."
-        )
-
-        self.parse_current_stage()
-        current_stage = self.current_stage
-        require_stage = calculate_percent(amount=self.max_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
-
-        if current_stage and require_stage and current_stage >= require_stage:
-            self.logger.info(
-                "Current stage: \"%(current_stage)s\" exceeds the configured percent threshold: \"%(percent)s - %(require_stage)s\"..." % {
-                    "current_stage": current_stage,
-                    "percent": self.configuration["prestige_percent_of_max_stage_percent"],
-                    "require_stage": require_stage,
-                }
-            )
-            # Additionally, if the users current stage has surpassed their old
-            # maximum stage, we should also update the max stage for the next
-            # prestige run.
-            if current_stage >= self.max_stage:
-                self.logger.info(
-                    "Current stage: \"%(current_stage)s\" exceeds the current max stage: \"%(max_stage)s\", "
-                    "maximum stage has been updated to the newest max stage." % {
-                        "current_stage": current_stage,
-                        "max_stage": self.max_stage,
-                    }
-                )
-                self.max_stage = current_stage
             self.prestige_execute_or_schedule()
 
     def tap(self):
