@@ -1012,171 +1012,12 @@ class Bot(object):
             pause=pause,
         )
 
-    def parse_max_stage(self):
-        """
-        Attempt to retrieve the current max stage that a user has reached.
-        """
-        if self.configuration["prestige_percent_of_max_stage_manual_ms"] > 0:
-            self.logger.info(
-                "Prestige at percent of max stage is set to use a manually set max stage, using "
-                "this value instead of parsing the stage from game..."
-            )
-            self.max_stage = self.configuration["prestige_percent_of_max_stage_manual_ms"]
-        else:
-            self.travel_to_master()
-            self.logger.info(
-                "Attempting to parse current max stage from game..."
-            )
-            self.find_and_click_image(
-                image=self.files["travel_master_scroll_top"],
-                region=self.configurations["regions"]["parse_max_stage"]["master_icon_area"],
-                precision=self.configurations["parameters"]["parse_max_stage"]["master_icon_precision"],
-                pause=self.configurations["parameters"]["parse_max_stage"]["master_icon_pause"],
-            )
-            results = []
-            loops = self.configurations["parameters"]["parse_max_stage"]["result_loops"]
-            # Loop and gather results about the max stage...
-            # We do this multiple times to try and stave off any false
-            # positives, we'll use the most common result as our final.
-            for i in range(loops):
-                result = pytesseract.image_to_string(
-                    image=self.process(
-                        region=self.configurations["regions"]["parse_max_stage"]["max_stage_area"],
-                        scale=self.configurations["parameters"]["parse_max_stage"]["scale"],
-                        threshold=self.configurations["parameters"]["parse_max_stage"]["threshold"],
-                        invert=self.configurations["parameters"]["parse_max_stage"]["invert"],
-                    ),
-                    config="--psm 7 --oem 0 nobatch",
-                )
-                self.logger.debug(
-                    "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                        "loop": i,
-                        "loops": loops,
-                        "result": result.encode("ascii", "replace"),
-                    }
-                )
-                result = "".join(filter(str.isdigit, result))
-                result = int(result) if result else None
-                self.logger.debug(
-                    "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                        "loop": i,
-                        "loops": loops,
-                        "result": result,
-                    }
-                )
-                # Ensure result is a valid amount, based on hard configurations
-                # and user configurations (if specified).
-                parse_min = self.configuration["stage_parsing_minimum"] or -100000
-                parse_max = self.configuration["stage_parsing_maximum"] or 9999999
-                if (
-                    result
-                    and parse_min <= result <= parse_max
-                    and result <= self.configurations["global"]["game"]["max_stage"]
-                ):
-                    self.logger.debug(
-                        "Adding result: %(result)s to list of results..." % {
-                            "result": result,
-                        }
-                    )
-                    results.append(result)
-            self.logger.debug(
-                "Calculating most common result from parsed results: %(results)s" % {
-                    "results": results,
-                }
-            )
-            self.max_stage = most_common_result(
-                results=results,
-            )
-            self.find_and_click_image(
-                image=self.files["large_exit"],
-                region=self.configurations["regions"]["parse_max_stage"]["exit_area"],
-                precision=self.configurations["parameters"]["parse_max_stage"]["exit_precision"],
-                pause=self.configurations["parameters"]["parse_max_stage"]["exit_pause"],
-            )
-        self.logger.info(
-            "Maximum Stage: %(maximum_stage)s..." % {
-                "maximum_stage": self.max_stage,
-            }
-        )
-
-    def parse_current_stage(self):
-        """
-        Attempt to retrieve the current stage that the user is on in game.
-        """
-        self.collapse()
-        self.logger.info(
-            "Attempting to parse current stage from game..."
-        )
-        results = []
-        loops = self.configurations["parameters"]["parse_current_stage"]["result_loops"]
-        # Loop and gather results about the current stage...
-        # We do this multiple times to try and stave off any false
-        # positives, we'll use the most common result as our final.
-        for i in range(loops):
-            result = pytesseract.image_to_string(
-                image=self.process(
-                    region=self.configurations["regions"]["parse_current_stage"]["current_stage_area"],
-                    scale=self.configurations["parameters"]["parse_current_stage"]["scale"],
-                    threshold=self.configurations["parameters"]["parse_current_stage"]["threshold"],
-                    invert=self.configurations["parameters"]["parse_current_stage"]["invert"],
-                ),
-                config="--psm 7 --oem 0 nobatch",
-            )
-            self.logger.debug(
-                "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                    "loop": i,
-                    "loops": loops,
-                    "result": result.encode("ascii", "replace"),
-                }
-            )
-            result = "".join(filter(str.isdigit, result))
-            result = int(result) if result else None
-            self.logger.debug(
-                "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                    "loop": i,
-                    "loops": loops,
-                    "result": result,
-                }
-            )
-            # Ensure result is a valid amount, based on hard configurations
-            # and user configurations (if specified).
-            parse_min = self.configuration["stage_parsing_minimum"] or -100000
-            parse_max = self.configuration["stage_parsing_maximum"] or 9999999
-            if (
-                result
-                and parse_min <= result <= parse_max
-                and result <= self.configurations["global"]["game"]["max_stage"]
-            ):
-                self.logger.debug(
-                    "Adding result: %(result)s to list of results..." % {
-                        "result": result,
-                    }
-                )
-                results.append(result)
-        self.logger.debug(
-            "Calculating most common result from parsed results: %(results)s" % {
-                "results": results,
-            }
-        )
-        self.current_stage = most_common_result(
-            results=results,
-        )
-        self.logger.info(
-            "Current Stage: %(current_stage)s..." % {
-                "current_stage": self.current_stage,
-            }
-        )
-
     def fight_boss(self):
         """
         Ensure a boss is being fought currently if one is available.
         """
         timeout_fight_boss_cnt = 0
         timeout_fight_boss_max = self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"]
-
-        initiated = False
-
-        self.collapse()
 
         if not self.search(
             image=self.files["fight_boss_icon"],
@@ -1188,35 +1029,33 @@ class Bot(object):
             # we can just keep going.
             return
         else:
-            while not initiated:
+            while self.search(
+                image=self.files["fight_boss_icon"],
+                region=self.configurations["regions"]["fight_boss"]["search_area"],
+                precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+            )[0]:
                 try:
                     self.logger.info(
                         "Attempting to initiate boss fight..."
                     )
-                    # Using a higher than normal pause when the fight boss
-                    # button is clicked on, this makes sure we don't "un-click"
-                    # before the fight is initiated.
-                    if self.find_and_click_image(
+                    self.find_and_click_image(
                         image=self.files["fight_boss_icon"],
                         region=self.configurations["regions"]["fight_boss"]["search_area"],
                         precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-                        pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
-                    ):
-                        self.logger.info(
-                            "Boss fight initiated..."
-                        )
-                        initiated = True
-                    else:
-                        timeout_fight_boss_cnt = self.handle_timeout(
-                            count=timeout_fight_boss_cnt,
-                            timeout=timeout_fight_boss_max,
-                        )
-                        # Always perform the pause sleep, regardless of the image being found.
-                        time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                    )
+                    time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                    timeout_fight_boss_cnt = self.handle_timeout(
+                        count=timeout_fight_boss_cnt,
+                        timeout=timeout_fight_boss_max,
+                    )
                 except TimeoutError:
                     self.logger.info(
                         "Boss fight could not be initiated, skipping..."
                     )
+                    return
+            self.logger.info(
+                "Boss fight initiated..."
+            )
 
     def leave_boss(self):
         """
