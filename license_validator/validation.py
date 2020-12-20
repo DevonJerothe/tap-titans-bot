@@ -5,7 +5,8 @@ from license_validator.settings import (
     VALIDATION_ONLINE_URL,
     VALIDATION_OFFLINE_URL,
     VALIDATION_FLUSH_URL,
-    VALIDATION_EVENT_URL,
+    VALIDATION_SESSION_URL,
+    VALIDATION_PRESTIGE_URL,
     LOCAL_DATA_DIRECTORY,
     LOCAL_DATA_FILES_DIRECTORY,
     LOCAL_DATA_DEPENDENCIES_DIRECTORY,
@@ -17,6 +18,7 @@ from license_validator.utilities import (
     get_license,
     set_files,
     set_dependencies,
+    changed_contents,
 )
 from license_validator.exceptions import (
     LicenseRetrievalError,
@@ -41,29 +43,20 @@ class LicenseValidator(object):
     Modify the settings.py file to manage the class instance generated.
     """
 
-    def __init__(
-        self,
-        program_name=None,
-        program_identifier=None,
-        program_retrieve_url=None,
-        program_online_url=None,
-        program_offline_url=None,
-        program_flush_url=None,
-        program_event_url=None,
-        program_configurations_template=None
-    ):
+    def __init__(self):
         """
         Initializing will setup and find certain variables and/or system files, the license key
         needed to validate certain things may not be present on initialization, that will properly
         update an attribute that we can use to determine our conditional paths.
         """
-        self.program_name = program_name or VALIDATION_NAME
-        self.program_identifier = program_identifier or VALIDATION_IDENTIFIER_SECRET
-        self.program_retrieve_url = program_retrieve_url or VALIDATION_RETRIEVE_URL
-        self.program_online_url = program_online_url or VALIDATION_ONLINE_URL
-        self.program_offline_url = program_offline_url or VALIDATION_OFFLINE_URL
-        self.program_flush_url = program_flush_url or VALIDATION_FLUSH_URL
-        self.program_event_url = program_event_url or VALIDATION_EVENT_URL
+        self.program_name = VALIDATION_NAME
+        self.program_identifier = VALIDATION_IDENTIFIER_SECRET
+        self.program_retrieve_url = VALIDATION_RETRIEVE_URL
+        self.program_online_url = VALIDATION_ONLINE_URL
+        self.program_offline_url = VALIDATION_OFFLINE_URL
+        self.program_flush_url = VALIDATION_FLUSH_URL
+        self.program_export_session_url = VALIDATION_SESSION_URL
+        self.program_export_prestige_url = VALIDATION_PRESTIGE_URL
 
         self.program_directory = LOCAL_DATA_DIRECTORY
         self.program_files_directory = LOCAL_DATA_FILES_DIRECTORY
@@ -71,7 +64,7 @@ class LicenseValidator(object):
         self.program_logs_directory = LOCAL_DATA_LOGS_DIRECTORY
         self.program_license_file = LOCAL_DATA_LICENSE_FILE
 
-        self.program_configurations_template = program_configurations_template or TEMPLATE_CONFIGURATIONS
+        self.program_configurations_template = TEMPLATE_CONFIGURATIONS
 
         # Ensure local data directories are at least generated
         # if they aren't already.
@@ -253,18 +246,33 @@ class LicenseValidator(object):
             except Exception:
                 pass
 
-    def event(self, event):
+    def export_session(self, export_contents=None, original_contents=None, extra={}):
         """
-        Log an event for the users current license. (runs in the background).
+        Export a users session and exported contents to the backend.
 
-        Based on the users session, events that take place during a session
-        are logged and sent over to the backend server.
+        "original_contents" can be included to perform some additional parsing
+        with the set of exports to determine which values have changed.
         """
         return self._post(
-            url=self.program_event_url,
-            background=True,
+            url=self.program_export_session_url,
             data={
-                "event": json.dumps(event),
+                "export_contents": json.dumps(export_contents or {} if not original_contents else changed_contents(
+                    export_contents=export_contents,
+                    original_contents=original_contents,
+                )) if export_contents else None,
+                **self.program_data(include_files=False),
+                **extra,
+            },
+        )
+
+    def export_prestige(self, prestige_contents):
+        """
+        Export a users prestige and the data associated.
+        """
+        return self._post(
+            url=self.program_export_prestige_url,
+            data={
+                "prestige_contents": json.dumps(prestige_contents),
                 **self.program_data(include_files=False),
             },
         )
