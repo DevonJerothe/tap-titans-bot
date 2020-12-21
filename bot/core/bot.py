@@ -1417,16 +1417,31 @@ class Bot(object):
             """
             Level all current heroes on the game screen.
             """
+            # Make sure we're still on the heroes screen...
+            self.travel_to_heroes(scroll=False, collapsed=False)
             self.logger.info(
                 "Levelling heroes on screen now..."
             )
             for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
-                self.click(
-                    point=point,
-                    clicks=clicks,
-                    interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
-                    pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
-                )
+                # Looping through possible clicks so we can check if we should level, if not, we can early
+                # break and move to the next point.
+                for i in range(clicks):
+                    # Only ever actually clicking on the hero if we know for sure a "level" is available.
+                    # We do this by checking the color of the point.
+                    if not self.point_is_color_range(
+                        point=(
+                            point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
+                            point[1],
+                        ),
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
+                    ):
+                        self.click(
+                            point=point,
+                            interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
+                            pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
+                        )
+                    else:
+                        break
             # Perform an additional sleep once levelling is totally
             # complete, this helps avoid issues with clicks causing
             # a hero detail sheet to pop up.
