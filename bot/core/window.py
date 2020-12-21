@@ -77,7 +77,7 @@ class Window(object):
         """
         Retrieve the text (title) value for the window.
         """
-        return win32gui.GetWindowText(self.hwnd).lower()
+        return win32gui.GetWindowText(self.hwnd)
 
     @property
     def rectangle(self):
@@ -150,9 +150,9 @@ class Window(object):
         Perform a check to see if a specified value is present within the windows text value.
         """
         if isinstance(value, str):
-            value = [value.lower()]
+            value = [value]
         else:
-            value = [v.lower() for v in value]
+            value = [v for v in value]
 
         for val in value:
             if self.text.find(val) != -1:
