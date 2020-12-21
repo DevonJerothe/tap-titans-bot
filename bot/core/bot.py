@@ -2150,6 +2150,10 @@ class Bot(object):
                 # Also handle the fact that fairies could appear
                 # and be clicked on while tapping is taking place.
                 self.fairies()
+                if self.stream.last_message != "Tapping...":
+                    self.logger.info(
+                        "Tapping..."
+                    )
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
