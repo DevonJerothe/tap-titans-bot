@@ -78,6 +78,7 @@ class Bot(object):
         # Function is used to determine when pause and resume should take
         # place during runtime.
         self.pause_func = pause_func
+        self.pause_date = None
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
