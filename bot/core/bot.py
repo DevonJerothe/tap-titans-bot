@@ -550,10 +550,10 @@ class Bot(object):
                         self.files["travel_pets_icon"],
                         self.files["travel_artifacts_icon"],
                         # Explicit Game State Images.
-                        self.files["game_state_coin"],
-                        self.files["game_state_master"],
-                        self.files["game_state_relics"],
-                        self.files["game_state_settings"],
+                        self.files["coin_icon"],
+                        self.files["master_icon"],
+                        self.files["relics_icon"],
+                        self.files["options_icon"],
                     ],
                     precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
                 )[0]:
