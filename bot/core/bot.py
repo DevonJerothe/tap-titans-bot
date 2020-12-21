@@ -2621,12 +2621,12 @@ class Bot(object):
             # exports are disabled.
             if not self.configuration["export_data_enabled"]:
                 self.export_session()
-            # Right before running, make sure any scheduled functions
-            # are configured properly.
-            self.schedule_functions()
             # Any functions that should be ran once on startup
             # can be handled at this point.
             self.execute_startup_functions()
+            # Right before running, make sure any scheduled functions
+            # are configured properly.
+            self.schedule_functions()
 
             while not self.stop_func():
                 try:
