@@ -13,17 +13,42 @@ VALIDATION_IDENTIFIER_SECRET = "PAbb|bZc1.'9M4cHH%{"
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
 # Additional url's are generated below.
-VALIDATION_URL = "https://www.titanbots.net"
+VALIDATION_URL = "http://localhost:8000"  # "https://www.titanbots.net"
 VALIDATION_LICENSES_URL = "%(validation_url)s/%(licenses_endpoint)s" % {
     "validation_url": VALIDATION_URL,
     "licenses_endpoint": "licenses",
 }
-# The retrieval url should be used on the application initialization
-# to ensure the license included is currently valid.
-VALIDATION_RETRIEVE_URL = "%(validation_licenses_url)s/%(retrieve_endpoint)s" % {
+
+VALIDATION_SYNCED = "synced"
+VALIDATION_SYNC = "sync"
+
+# Dependencies urls can be used to both determine if any are missing,
+# and download missing dependencies.
+VALIDATION_DEPENDENCIES_CHECK_URL = "%(validation_licenses_url)s/%(dependencies_check_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
-    "retrieve_endpoint": "retrieve",
+    "dependencies_check_endpoint": "dependencies/check",
 }
+VALIDATION_DEPENDENCIES_RETRIEVE_URL = "%(validation_licenses_url)s/%(dependencies_retrieve_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "dependencies_retrieve_endpoint": "dependencies/retrieve",
+}
+
+# Files urls can be used to both determine if any are missing,
+# and download missing files.
+VALIDATION_FILES_CHECK_URL = "%(validation_licenses_url)s/%(files_check_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "files_check_endpoint": "files/check",
+}
+VALIDATION_FILES_RETRIEVE_URL = "%(validation_licenses_url)s/%(files_retrieve_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "files_retrieve_endpoint": "files/retrieve",
+}
+
+VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "license_retrieve_endpoint": "license/retrieve",
+}
+
 # State urls can be used to properly set an online and offline state.
 VALIDATION_ONLINE_URL = "%(validation_licenses_url)s/%(online_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
@@ -53,9 +78,9 @@ PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
 LOCAL_DATA_DIRECTORY = path.join(Path.home(), ".%(name)s" % {
     "name": VALIDATION_NAME,
 })
-LOCAL_DATA_FILES_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "files")
+LOCAL_DATA_FILE_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "files")
 # Any additional dependencies can be stored in this directory.
-LOCAL_DATA_DEPENDENCIES_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "dependencies")
+LOCAL_DATA_DEPENDENCY_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "dependencies")
 # Any local logs should be stored in this directory.
 LOCAL_DATA_LOGS_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "logs")
 # The license information should be stored in our local data directory
