@@ -1,24 +1,31 @@
 from license_validator.settings import (
     VALIDATION_NAME,
     VALIDATION_IDENTIFIER_SECRET,
-    VALIDATION_RETRIEVE_URL,
+    VALIDATION_SYNCED,
+    VALIDATION_SYNC,
+    VALIDATION_DEPENDENCIES_CHECK_URL,
+    VALIDATION_DEPENDENCIES_RETRIEVE_URL,
+    VALIDATION_FILES_CHECK_URL,
+    VALIDATION_FILES_RETRIEVE_URL,
+    VALIDATION_LICENSE_RETRIEVE_URL,
     VALIDATION_ONLINE_URL,
     VALIDATION_OFFLINE_URL,
     VALIDATION_FLUSH_URL,
     VALIDATION_SESSION_URL,
     VALIDATION_PRESTIGE_URL,
     LOCAL_DATA_DIRECTORY,
-    LOCAL_DATA_FILES_DIRECTORY,
-    LOCAL_DATA_DEPENDENCIES_DIRECTORY,
+    LOCAL_DATA_FILE_DIRECTORY,
+    LOCAL_DATA_DEPENDENCY_DIRECTORY,
     LOCAL_DATA_LOGS_DIRECTORY,
     LOCAL_DATA_LICENSE_FILE,
     TEMPLATE_CONFIGURATIONS,
 )
 from license_validator.utilities import (
     get_license,
-    set_files,
-    set_dependencies,
+    set_file,
+    set_dependency,
     changed_contents,
+    chunks,
 )
 from license_validator.exceptions import (
     LicenseRetrievalError,
@@ -51,7 +58,15 @@ class LicenseValidator(object):
         """
         self.program_name = VALIDATION_NAME
         self.program_identifier = VALIDATION_IDENTIFIER_SECRET
-        self.program_retrieve_url = VALIDATION_RETRIEVE_URL
+
+        self.program_dependencies_check_url = VALIDATION_DEPENDENCIES_CHECK_URL
+        self.program_dependencies_retrieve_url = VALIDATION_DEPENDENCIES_RETRIEVE_URL
+
+        self.program_files_check_url = VALIDATION_FILES_CHECK_URL
+        self.program_files_retrieve_url = VALIDATION_FILES_RETRIEVE_URL
+
+        self.license_retrieve_url = VALIDATION_LICENSE_RETRIEVE_URL
+
         self.program_online_url = VALIDATION_ONLINE_URL
         self.program_offline_url = VALIDATION_OFFLINE_URL
         self.program_flush_url = VALIDATION_FLUSH_URL
@@ -59,12 +74,13 @@ class LicenseValidator(object):
         self.program_export_prestige_url = VALIDATION_PRESTIGE_URL
 
         self.program_directory = LOCAL_DATA_DIRECTORY
-        self.program_files_directory = LOCAL_DATA_FILES_DIRECTORY
-        self.program_dependencies_directory = LOCAL_DATA_DEPENDENCIES_DIRECTORY
+        self.program_file_directory = LOCAL_DATA_FILE_DIRECTORY
+        self.program_dependency_directory = LOCAL_DATA_DEPENDENCY_DIRECTORY
         self.program_logs_directory = LOCAL_DATA_LOGS_DIRECTORY
         self.program_license_file = LOCAL_DATA_LICENSE_FILE
 
         self.program_configurations_template = TEMPLATE_CONFIGURATIONS
+        self.bulk_collect_chunk = 20
 
         # Ensure local data directories are at least generated
         # if they aren't already.
@@ -98,8 +114,8 @@ class LicenseValidator(object):
         """
         for directory in [
             self.program_directory,
-            self.program_files_directory,
-            self.program_dependencies_directory,
+            self.program_file_directory,
+            self.program_dependency_directory,
             self.program_logs_directory,
         ]:
             if not os.path.exists(directory):
@@ -149,53 +165,138 @@ class LicenseValidator(object):
 
         return response
 
-    def _retrieve(self, url, include_files=True, set_data=True, logger=None, update_license_data=True):
-        """
-        Utility function to handle retrieving any license based urls.
-
-        The url specified will determine what is being accessed.
-        """
-        response = self._post(
-            url=url,
-            data=self.program_data(
-                include_files=include_files,
-            ),
+    def _collect(
+        self,
+        logger,
+        collect,
+        collect_plural,
+        collect_bulk,
+        check_url,
+        retrieve_url,
+        setter,
+        setter_kwargs,
+        exclude_data,
+    ):
+        logger.info(
+            "Syncing %(collect_plural)s..." % {
+                "collect_plural": collect_plural,
+            }
         )
+        response = self._post(
+            url=check_url,
+            data={
+                **self.program_data(),
+                **exclude_data,
+            },
+        ).json()
 
-        # Convert response to json data equivalent.
-        # We now have access to all license data needed.
-        if update_license_data:
-            self.license_data = response.json()
-        if set_data:
-            set_files(
-                files_directory=self.program_files_directory,
-                files=self.license_data["program"]["files"],
-                logger=logger,
+        if response["status"] == VALIDATION_SYNCED:
+            logger.info(
+               "DONE..."
             )
-            set_dependencies(
-                dependencies_directory=self.program_dependencies_directory,
-                dependencies=self.license_data["program"]["dependencies"],
-                logger=logger,
+        if response["status"] == VALIDATION_SYNC:
+            logger.info(
+                "Retrieving %(count)s missing %(collect_plural)s..." % {
+                    "count": len(response["missing"]),
+                    "collect_plural": collect_plural if len(response["missing"]) > 1 else collect,
+                }
             )
-        return response
+            if collect_bulk:
+                retrieved = []
+                for bulk in chunks(response["missing"], self.bulk_collect_chunk):
+                    response = self._post(
+                        url=retrieve_url,
+                        data={
+                            **self.program_data(),
+                            collect_plural: json.dumps(bulk),
+                        }
+                    ).json()
+                    for file in response["retrieved"]:
+                        setter(
+                            instance=file,
+                            **setter_kwargs,
+                        )
+            else:
+                for missing in response["missing"]:
+                    logger.info(
+                        "Retrieving %(missing)s..." % {
+                            "missing": missing["name"],
+                        }
+                    )
+                    response = self._post(
+                        url=retrieve_url,
+                        data={
+                            **self.program_data(),
+                            collect: missing["pk"],
+                        },
+                    ).json()
+                    setter(
+                        instance=response["retrieved"],
+                        **setter_kwargs,
+                    )
+            logger.info(
+                "DONE..."
+            )
 
-    def retrieve(self, include_files=True, set_data=True, update_license_data=True, logger=None):
+    def collect_license_data(self):
         """
-        Retrieve the current license.
-
-        We expect the license to be available at this point, the information returned here will be in a json
-        dictionary of information. It should be noted that we only ever return images that aren't already
-        available in the users local data directory.
-
-        Once the data is retrieved, we will call some additional helper methods so that we can
-        successfully update the users local data as needed.
+        Perform license data collection, only grabbing relevant license information and
+        handling validation checks.
         """
-        return self._retrieve(
-            url=self.program_retrieve_url,
-            include_files=include_files,
-            set_data=set_data,
-            update_license_data=update_license_data,
+        return self._post(
+            url=self.license_retrieve_url,
+            data=self.program_data(),
+        ).json()
+
+    def collect_license(self, logger):
+        """
+        Perform license collection, retrieving required files and dependencies as needed.
+        """
+        self.license_data = self.collect_license_data()
+
+        # Handle collection of managed dependencies.
+        # Simply retrieving each one and writing it to
+        # the users local dependency directory.
+        self._collect(
             logger=logger,
+            collect="dependency",
+            collect_plural="dependencies",
+            collect_bulk=False,
+            check_url=self.program_dependencies_check_url,
+            retrieve_url=self.program_dependencies_retrieve_url,
+            setter=set_dependency,
+            setter_kwargs={
+                "dependency_directory": self.program_dependency_directory,
+                "logger": logger,
+            },
+            exclude_data={
+                "exclude_dependencies": json.dumps(self.dependencies(
+                    directory=self.program_dependency_directory,
+                    extensions=[".zip"],
+                )),
+            },
+        )
+        # Handle collection of managed files.
+        # Retrieving missing files through a bulk chunked
+        # mechanism to avoid timeout issues and long drawn
+        # out requests.
+        self._collect(
+            logger=logger,
+            collect="file",
+            collect_plural="files",
+            collect_bulk=True,
+            check_url=self.program_files_check_url,
+            retrieve_url=self.program_files_retrieve_url,
+            setter=set_file,
+            setter_kwargs={
+                "file_directory": self.program_file_directory,
+                "logger": logger,
+            },
+            exclude_data={
+                "exclude_files": json.dumps(self.files(
+                    directory=self.program_file_directory,
+                )),
+            },
         )
 
     def online(self):
@@ -205,11 +306,9 @@ class LicenseValidator(object):
         This is only possible when we actually have a license.
         """
         if self.license_available:
-            return self._retrieve(
+            return self._post(
                 url=self.program_online_url,
-                include_files=False,
-                set_data=False,
-                update_license_data=False,
+                data=self.program_data(),
             )
 
     def offline(self):
@@ -220,11 +319,9 @@ class LicenseValidator(object):
         """
         if self.license_available:
             try:
-                return self._retrieve(
+                return self._post(
                     url=self.program_offline_url,
-                    include_files=False,
-                    set_data=False,
-                    update_license_data=False,
+                    data=self.program_data(),
                 )
             except Exception:
                 pass
@@ -237,11 +334,9 @@ class LicenseValidator(object):
         """
         if self.license_available:
             try:
-                return self._retrieve(
+                return self._post(
                     url=self.program_flush_url,
-                    include_files=False,
-                    set_data=False,
-                    update_license_data=False,
+                    data=self.program_data(),
                 )
             except Exception:
                 pass
@@ -260,7 +355,7 @@ class LicenseValidator(object):
                     export_contents=export_contents,
                     original_contents=original_contents,
                 )) if export_contents else None,
-                **self.program_data(include_files=False),
+                **self.program_data(),
                 **extra,
             },
         )
@@ -273,31 +368,17 @@ class LicenseValidator(object):
             url=self.program_export_prestige_url,
             data={
                 "prestige_contents": json.dumps(prestige_contents),
-                **self.program_data(include_files=False),
+                **self.program_data(),
             },
         )
 
-    def program_data(self, include_files=True):
-        """
-        Return a JSON formatted string containing all of our validation data required to retrieve a license.
-        """
-        dct = {
+    def program_data(self):
+        return {
             "session": self.session,
             "slug": self.program_name,
             "identifier": self.program_identifier,
             "key": self.license,
         }
-        if include_files:
-            dct.update({
-                "exclude_files": json.dumps(self.files(
-                    directory=self.program_files_directory,
-                )),
-                "exclude_dependencies": json.dumps(self.dependencies(
-                    directory=self.program_dependencies_directory,
-                    extensions=[".zip"],
-                )),
-            })
-        return dct
 
     @property
     def expiration(self):
