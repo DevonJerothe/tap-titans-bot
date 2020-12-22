@@ -10,26 +10,26 @@ from bot.core.window import WindowHandler, WindowNotFoundError
 from bot.core.scheduler import TitanScheduler
 from bot.core.imagesearch import image_search_area, click_image
 from bot.core.imagecompare import compare_images
-from bot.core.decorators import event
 from bot.core.exceptions import (
     LicenseAuthenticationError,
     GameStateException,
     StoppedException,
     PausedException,
+    ExportContentsException,
 )
 from bot.core.utilities import (
     create_logger,
     decrypt_secret,
-    most_common_result,
-    calculate_percent,
 )
 
 from itertools import cycle
 from pyautogui import FailSafeException
-from pytesseract import pytesseract
+
 from PIL import Image
 
 import sentry_sdk
+import pyperclip
+import datetime
 import random
 import copy
 import numpy
@@ -63,9 +63,12 @@ class Bot(object):
         self.application_version = application_version
         self.application_discord = application_discord
 
-        self.files = {}           # Program Files.
-        self.configurations = {}  # Global Program Configurations
-        self.configuration = {}   # Local Bot Configurations.
+        self.files = {}             # Program Files.
+        self.configurations = {}    # Global Program Configurations
+        self.configuration = {}     # Local Bot Configurations.
+
+        self.export_orig_contents = {}     # Store the original set of export data.
+        self.export_current_contents = {}  # Most recent contents.
 
         # stop_func is used to correctly handle our threading functionality.
         # A ``bot`` is initialized through some method that invokes a new thread.
@@ -75,6 +78,7 @@ class Bot(object):
         # Function is used to determine when pause and resume should take
         # place during runtime.
         self.pause_func = pause_func
+        self.pause_date = None
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
@@ -113,7 +117,7 @@ class Bot(object):
                 self.logger.debug(
                     self.license.license
                 )
-                self.license.retrieve(logger=self.logger)
+                self.license.collect_license(logger=self.logger)
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
@@ -230,21 +234,7 @@ class Bot(object):
         """
         Configure the dependencies used by the bot.
         """
-        self.logger.info("Configuring dependencies...")
-        # For our purposes, we definitely need our pytesseract to be initialized
-        # using the correct directory, we can expect it to be present in the
-        # dependencies directory for our application.
-        pytesseract.tesseract_cmd = os.path.join(
-            self.license.program_dependencies_directory,
-            "tesseract",
-            "tesseract.exe",
-        )
-        self.logger.debug(
-            "Dependencies: Loaded..."
-        )
-        self.logger.debug("Tesseract CMD: %(tesseract_cmd)s" % {
-            "tesseract_cmd": pytesseract.tesseract_cmd,
-        })
+        pass
 
     def configure_files(self):
         """
@@ -254,7 +244,7 @@ class Bot(object):
         # Our local license/application directory should contain a directory of images
         # with their versions, the bot does not care about the versions other than making
         # sure the most recent one is being used. We handle that logic here.
-        with os.scandir(self.license.program_files_directory) as scan:
+        with os.scandir(self.license.program_file_directory) as scan:
             for version in scan:
                 for file in os.scandir(version.path):
                     self.files[file.name.split(".")[0]] = file.path
@@ -303,17 +293,33 @@ class Bot(object):
             for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
                 if artifact not in upgrade_artifacts:
                     upgrade_artifacts.append(artifact)
+        if self.configuration["artifacts_ignore_artifact"]:
+            for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
+                if artifact in upgrade_artifacts:
+                    upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
         if self.configuration["artifacts_remove_max_level"]:
             upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
+        if self.configuration["artifacts_shuffle"]:
+            random.shuffle(upgrade_artifacts)
 
-        # ARTIFACTS INFO.
+        # Artifacts Data.
+        # ------------------
+        # "upgrade_artifacts" - cycled (iter) if available.
+        # "next_artifact_upgrade" - first available from "upgrade_artifacts" if available.
         self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if upgrade_artifacts else None
-        # SESSION LEVEL INFO.
-        self.current_stage = None
-        self.max_stage = None
-        # PER PRESTIGE INFO.
+
+        # Per Prestige Data.
+        # ------------------
+        # "master_levelled" - Store a flag to denote the master being levelled.
         self.master_levelled = False
+
+        self.logger.debug(
+            "Additional Configurations: Loaded..."
+        )
+        self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
+        self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
+        self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
 
     def schedule_functions(self):
         """
@@ -330,6 +336,10 @@ class Bot(object):
             self.check_license: {
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
+            },
+            self.export_data: {
+                "enabled": self.configuration["export_data_enabled"],
+                "interval": self.configuration["export_data_interval"],
             },
             self.tap: {
                 "enabled": self.configuration["tapping_enabled"],
@@ -379,17 +389,9 @@ class Bot(object):
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
             },
-            self.prestige_stage: {
-                "enabled": self.configuration["prestige_stage_enabled"],
-                "interval": self.configurations["global"]["prestige_stage"]["prestige_stage_interval"],
-            },
             self.prestige_close_to_max: {
                 "enabled": self.configuration["prestige_close_to_max_enabled"],
                 "interval": self.configurations["global"]["prestige_close_to_max"]["prestige_close_to_max_interval"],
-            },
-            self.prestige_percent_of_max_stage: {
-                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
-                "interval": self.configurations["global"]["prestige_percent_of_max_stage"]["prestige_percent_of_max_stage_interval"]
             },
         }.items():
             if data["enabled"]:
@@ -437,6 +439,10 @@ class Bot(object):
                 "enabled": self.configuration["crash_recovery_enabled"],
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
+            self.export_data: {
+                "enabled": self.configuration["export_data_enabled"],
+                "execute": self.configurations["global"]["export_data"]["export_data_on_start"],
+            },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
                 "execute": self.configurations["global"]["fight_boss"]["fight_boss_on_start"],
@@ -444,10 +450,6 @@ class Bot(object):
             self.eggs: {
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "execute": self.configurations["global"]["eggs"]["eggs_on_start"],
-            },
-            self.parse_max_stage: {
-                "enabled": self.configuration["prestige_percent_of_max_stage_enabled"],
-                "execute": self.configuration["prestige_percent_of_max_stage_enabled"],
             },
             self.level_master: {
                 "enabled": self.configuration["level_master_enabled"],
@@ -548,10 +550,10 @@ class Bot(object):
                         self.files["travel_pets_icon"],
                         self.files["travel_artifacts_icon"],
                         # Explicit Game State Images.
-                        self.files["game_state_coin"],
-                        self.files["game_state_master"],
-                        self.files["game_state_relics"],
-                        self.files["game_state_settings"],
+                        self.files["coin_icon"],
+                        self.files["master_icon"],
+                        self.files["relics_icon"],
+                        self.files["options_icon"],
                     ],
                     precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
                 )[0]:
@@ -934,6 +936,7 @@ class Bot(object):
         region=None,
         precision=0.8,
         clicks=1,
+        interval=0.0,
         button="left",
         offset=5,
         pause=0.0,
@@ -951,6 +954,7 @@ class Bot(object):
                 image=img,
                 position=position,
                 clicks=clicks,
+                interval=interval,
                 button=button,
                 offset=offset,
                 pause=pause,
@@ -979,6 +983,7 @@ class Bot(object):
         image,
         position,
         clicks=1,
+        interval=0.0,
         button="left",
         offset=5,
         pause=0.0,
@@ -992,163 +997,9 @@ class Bot(object):
             position=position,
             button=button,
             clicks=clicks,
+            interval=interval,
             offset=offset,
             pause=pause,
-        )
-
-    def parse_max_stage(self):
-        """
-        Attempt to retrieve the current max stage that a user has reached.
-        """
-        if self.configuration["prestige_percent_of_max_stage_manual_ms"] > 0:
-            self.logger.info(
-                "Prestige at percent of max stage is set to use a manually set max stage, using "
-                "this value instead of parsing the stage from game..."
-            )
-            self.max_stage = self.configuration["prestige_percent_of_max_stage_manual_ms"]
-        else:
-            self.travel_to_master()
-            self.logger.info(
-                "Attempting to parse current max stage from game..."
-            )
-            self.find_and_click_image(
-                image=self.files["travel_master_scroll_top"],
-                region=self.configurations["regions"]["parse_max_stage"]["master_icon_area"],
-                precision=self.configurations["parameters"]["parse_max_stage"]["master_icon_precision"],
-                pause=self.configurations["parameters"]["parse_max_stage"]["master_icon_pause"],
-            )
-            results = []
-            loops = self.configurations["parameters"]["parse_max_stage"]["result_loops"]
-            # Loop and gather results about the max stage...
-            # We do this multiple times to try and stave off any false
-            # positives, we'll use the most common result as our final.
-            for i in range(loops):
-                result = pytesseract.image_to_string(
-                    image=self.process(
-                        region=self.configurations["regions"]["parse_max_stage"]["max_stage_area"],
-                        scale=self.configurations["parameters"]["parse_max_stage"]["scale"],
-                        threshold=self.configurations["parameters"]["parse_max_stage"]["threshold"],
-                        invert=self.configurations["parameters"]["parse_max_stage"]["invert"],
-                    ),
-                    config="--psm 7 --oem 0 nobatch",
-                )
-                self.logger.debug(
-                    "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                        "loop": i,
-                        "loops": loops,
-                        "result": result.encode("ascii", "replace"),
-                    }
-                )
-                result = "".join(filter(str.isdigit, result))
-                result = int(result) if result else None
-                self.logger.debug(
-                    "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                        "loop": i,
-                        "loops": loops,
-                        "result": result,
-                    }
-                )
-                # Ensure result is a valid amount, based on hard configurations
-                # and user configurations (if specified).
-                parse_min = self.configuration["stage_parsing_minimum"] or -100000
-                parse_max = self.configuration["stage_parsing_maximum"] or 9999999
-                if (
-                    result
-                    and parse_min <= result <= parse_max
-                    and result <= self.configurations["global"]["game"]["max_stage"]
-                ):
-                    self.logger.debug(
-                        "Adding result: %(result)s to list of results..." % {
-                            "result": result,
-                        }
-                    )
-                    results.append(result)
-            self.logger.debug(
-                "Calculating most common result from parsed results: %(results)s" % {
-                    "results": results,
-                }
-            )
-            self.max_stage = most_common_result(
-                results=results,
-            )
-            self.find_and_click_image(
-                image=self.files["large_exit"],
-                region=self.configurations["regions"]["parse_max_stage"]["exit_area"],
-                precision=self.configurations["parameters"]["parse_max_stage"]["exit_precision"],
-                pause=self.configurations["parameters"]["parse_max_stage"]["exit_pause"],
-            )
-        self.logger.info(
-            "Maximum Stage: %(maximum_stage)s..." % {
-                "maximum_stage": self.max_stage,
-            }
-        )
-
-    def parse_current_stage(self):
-        """
-        Attempt to retrieve the current stage that the user is on in game.
-        """
-        self.collapse()
-        self.logger.info(
-            "Attempting to parse current stage from game..."
-        )
-        results = []
-        loops = self.configurations["parameters"]["parse_current_stage"]["result_loops"]
-        # Loop and gather results about the current stage...
-        # We do this multiple times to try and stave off any false
-        # positives, we'll use the most common result as our final.
-        for i in range(loops):
-            result = pytesseract.image_to_string(
-                image=self.process(
-                    region=self.configurations["regions"]["parse_current_stage"]["current_stage_area"],
-                    scale=self.configurations["parameters"]["parse_current_stage"]["scale"],
-                    threshold=self.configurations["parameters"]["parse_current_stage"]["threshold"],
-                    invert=self.configurations["parameters"]["parse_current_stage"]["invert"],
-                ),
-                config="--psm 7 --oem 0 nobatch",
-            )
-            self.logger.debug(
-                "Raw Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                    "loop": i,
-                    "loops": loops,
-                    "result": result.encode("ascii", "replace"),
-                }
-            )
-            result = "".join(filter(str.isdigit, result))
-            result = int(result) if result else None
-            self.logger.debug(
-                "Parsed Result %(loop)s/%(loops)s: \"%(result)s\"..." % {
-                    "loop": i,
-                    "loops": loops,
-                    "result": result,
-                }
-            )
-            # Ensure result is a valid amount, based on hard configurations
-            # and user configurations (if specified).
-            parse_min = self.configuration["stage_parsing_minimum"] or -100000
-            parse_max = self.configuration["stage_parsing_maximum"] or 9999999
-            if (
-                result
-                and parse_min <= result <= parse_max
-                and result <= self.configurations["global"]["game"]["max_stage"]
-            ):
-                self.logger.debug(
-                    "Adding result: %(result)s to list of results..." % {
-                        "result": result,
-                    }
-                )
-                results.append(result)
-        self.logger.debug(
-            "Calculating most common result from parsed results: %(results)s" % {
-                "results": results,
-            }
-        )
-        self.current_stage = most_common_result(
-            results=results,
-        )
-        self.logger.info(
-            "Current Stage: %(current_stage)s..." % {
-                "current_stage": self.current_stage,
-            }
         )
 
     def fight_boss(self):
@@ -1157,10 +1008,6 @@ class Bot(object):
         """
         timeout_fight_boss_cnt = 0
         timeout_fight_boss_max = self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"]
-
-        initiated = False
-
-        self.collapse()
 
         if not self.search(
             image=self.files["fight_boss_icon"],
@@ -1172,35 +1019,33 @@ class Bot(object):
             # we can just keep going.
             return
         else:
-            while not initiated:
+            while self.search(
+                image=self.files["fight_boss_icon"],
+                region=self.configurations["regions"]["fight_boss"]["search_area"],
+                precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+            )[0]:
                 try:
                     self.logger.info(
                         "Attempting to initiate boss fight..."
                     )
-                    # Using a higher than normal pause when the fight boss
-                    # button is clicked on, this makes sure we don't "un-click"
-                    # before the fight is initiated.
-                    if self.find_and_click_image(
+                    self.find_and_click_image(
                         image=self.files["fight_boss_icon"],
                         region=self.configurations["regions"]["fight_boss"]["search_area"],
                         precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-                        pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
-                    ):
-                        self.logger.info(
-                            "Boss fight initiated..."
-                        )
-                        initiated = True
-                    else:
-                        timeout_fight_boss_cnt = self.handle_timeout(
-                            count=timeout_fight_boss_cnt,
-                            timeout=timeout_fight_boss_max,
-                        )
-                        # Always perform the pause sleep, regardless of the image being found.
-                        time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                    )
+                    time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
+                    timeout_fight_boss_cnt = self.handle_timeout(
+                        count=timeout_fight_boss_cnt,
+                        timeout=timeout_fight_boss_max,
+                    )
                 except TimeoutError:
                     self.logger.info(
                         "Boss fight could not be initiated, skipping..."
                     )
+                    return
+            self.logger.info(
+                "Boss fight initiated..."
+            )
 
     def leave_boss(self):
         """
@@ -1577,16 +1422,31 @@ class Bot(object):
             """
             Level all current heroes on the game screen.
             """
+            # Make sure we're still on the heroes screen...
+            self.travel_to_heroes(scroll=False, collapsed=False)
             self.logger.info(
                 "Levelling heroes on screen now..."
             )
             for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
-                self.click(
-                    point=point,
-                    clicks=clicks,
-                    interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
-                    pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
-                )
+                # Looping through possible clicks so we can check if we should level, if not, we can early
+                # break and move to the next point.
+                for i in range(clicks):
+                    # Only ever actually clicking on the hero if we know for sure a "level" is available.
+                    # We do this by checking the color of the point.
+                    if not self.point_is_color_range(
+                        point=(
+                            point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
+                            point[1],
+                        ),
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
+                    ):
+                        self.click(
+                            point=point,
+                            interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
+                            pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
+                        )
+                    else:
+                        break
             # Perform an additional sleep once levelling is totally
             # complete, this helps avoid issues with clicks causing
             # a hero detail sheet to pop up.
@@ -1849,13 +1709,19 @@ class Bot(object):
                 )
                 continue
 
-    @event(title="Prestige Performed")
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
         """
         self.travel_to_master()
         self.leave_boss()
+
+        self.logger.info(
+            "Attempting to prestige in game now..."
+        )
+        self.export_prestige(prestige_contents={
+            "upgradeArtifact": self.next_artifact_upgrade,
+        })
 
         tournament_prestige = False
 
@@ -1902,6 +1768,8 @@ class Bot(object):
                         image=self.files["prestige_confirm_confirm_icon"],
                         region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
                         precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                        clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
+                        interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
                         pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
                     )
             # Tournament is in a "red" state, one we joined is now
@@ -1950,6 +1818,8 @@ class Bot(object):
                 image=self.files["prestige_confirm_confirm_icon"],
                 region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
                 precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
+                interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
                 pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
             )
             # Waiting here through the confirm_confirm_icon_pause for the prestige
@@ -2097,6 +1967,13 @@ class Bot(object):
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
         self.master_levelled = False
 
+        # Once the prestige has finished, we need to update our most upto date
+        # set of exported data, from here, we can then figure out whats changed
+        # and send a new session event. If this isn't enabled, we at least get
+        # a prestige sent along above.
+        if self.configuration["export_data_enabled"]:
+            self.export_data()
+
         # Handle some forcing of certain functionality post prestige below.
         # We do this once to ensure the game is up and running efficiently
         # before beginning scheduled functionality again.
@@ -2130,41 +2007,14 @@ class Bot(object):
             # if it's present so the options don't clash.
             self.cancel_scheduled_function(tags=[
                 self.prestige.__name__,
-                self.prestige_stage.__name__,
                 self.prestige_close_to_max.__name__,
-                self.prestige_percent_of_max_stage.__name__,
             ])
             self.schedule_function(
                 function=self.prestige,
                 interval=interval,
             )
         else:
-            self.logger.info(
-                "Executing prestige now..."
-            )
             self.prestige()
-
-    def prestige_stage(self):
-        """
-        Perform a prestige in game when the current stage exceeds the configured limit.
-        """
-        self.collapse()
-        self.logger.info(
-            "Checking current stage to determine if prestige should be performed..."
-        )
-
-        self.parse_current_stage()
-        current_stage = self.current_stage
-        require_stage = self.configuration["prestige_stage_threshold"]
-
-        if current_stage and current_stage >= require_stage:
-            self.logger.info(
-                "Current stage: \"%(current_stage)s\" exceeds the configured threshold: \"%(require_stage)s\"..." % {
-                    "current_stage": current_stage,
-                    "require_stage": require_stage,
-                }
-            )
-            self.prestige_execute_or_schedule()
 
     def prestige_close_to_max(self):
         """
@@ -2237,42 +2087,6 @@ class Bot(object):
             )
             self.prestige_execute_or_schedule()
 
-    def prestige_percent_of_max_stage(self):
-        """
-        Perform a prestige in game when the user has reached the stage required that represents
-        a certain percent of their current maximum stage.
-        """
-        self.collapse()
-        self.logger.info(
-            "Checking current stage to determine if percent prestige should be performed..."
-        )
-
-        self.parse_current_stage()
-        current_stage = self.current_stage
-        require_stage = calculate_percent(amount=self.max_stage, percent=self.configuration["prestige_percent_of_max_stage_percent"])
-
-        if current_stage and require_stage and current_stage >= require_stage:
-            self.logger.info(
-                "Current stage: \"%(current_stage)s\" exceeds the configured percent threshold: \"%(percent)s - %(require_stage)s\"..." % {
-                    "current_stage": current_stage,
-                    "percent": self.configuration["prestige_percent_of_max_stage_percent"],
-                    "require_stage": require_stage,
-                }
-            )
-            # Additionally, if the users current stage has surpassed their old
-            # maximum stage, we should also update the max stage for the next
-            # prestige run.
-            if current_stage >= self.max_stage:
-                self.logger.info(
-                    "Current stage: \"%(current_stage)s\" exceeds the current max stage: \"%(max_stage)s\", "
-                    "maximum stage has been updated to the newest max stage." % {
-                        "current_stage": current_stage,
-                        "max_stage": self.max_stage,
-                    }
-                )
-                self.max_stage = current_stage
-            self.prestige_execute_or_schedule()
-
     def tap(self):
         """
         Perform taps on main game screen.
@@ -2336,6 +2150,10 @@ class Bot(object):
                 # Also handle the fact that fairies could appear
                 # and be clicked on while tapping is taking place.
                 self.fairies()
+                if self.stream.last_message != "Tapping...":
+                    self.logger.info(
+                        "Tapping..."
+                    )
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
@@ -2386,6 +2204,96 @@ class Bot(object):
                     "No panels could be found to collapse..."
                 )
                 break
+
+    def export_data(self):
+        """
+        Open up the settings in game and export user data.
+
+        This information contains a lot of very useful information, the information
+        is saved to the users clipboard which we can access and store.
+        """
+        self.travel_to_master()
+
+        # Opening up the master screen will make sure the export data
+        # function has the most up to date information.
+        self.logger.info(
+            "Opening master page to ensure exported data is up to date..."
+        )
+        self.click(
+            point=self.configurations["points"]["export_data"]["master_screen"],
+            pause=self.configurations["parameters"]["export_data"]["master_screen_pause"],
+        )
+        while not self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["travel"]["exit_area"],
+            precision=self.configurations["parameters"]["travel"]["exit_precision"],
+            pause=self.configurations["parameters"]["travel"]["exit_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
+
+        self.logger.info(
+            "Attempting to export data now..."
+        )
+        while not self.search(
+            image=self.files["options_header"],
+            region=self.configurations["regions"]["export_data"]["options_header_area"],
+            precision=self.configurations["parameters"]["export_data"]["options_header_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["export_data"]["options_icon"],
+                pause=self.configurations["parameters"]["export_data"]["options_icon_pause"],
+            )
+
+        while not self.find_and_click_image(
+            image=self.files["options_export"],
+            region=self.configurations["regions"]["export_data"]["options_export_area"],
+            precision=self.configurations["parameters"]["export_data"]["options_export_precision"],
+            pause=self.configurations["parameters"]["export_data"]["options_export_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["export_data"]["options_export_pause"])
+        while not self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["travel"]["exit_area"],
+            precision=self.configurations["parameters"]["travel"]["exit_precision"],
+            pause=self.configurations["parameters"]["travel"]["exit_pause"],
+        ):
+            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
+
+        self.logger.info(
+            "Export data has been copied to the clipboard..."
+        )
+        # Grab the current clipboard contents...
+        # It should be in the proper json format.
+        contents = pyperclip.paste()
+
+        try:
+            # Always setting our exported content on export.
+            # We handle the "original" set of exported data below.
+            contents = json.loads(pyperclip.paste())
+            self.export_contents = {
+                "playerStats": contents["playerStats"],
+                "artifacts": contents["artifacts"],
+            }
+            self.logger.info(
+                "Exported data has been loaded successfully..."
+            )
+        except json.JSONDecodeError:
+            raise ExportContentsException()
+
+        if not self.export_orig_contents:
+            self.export_orig_contents = copy.deepcopy(self.export_contents)
+            # original_contents is left blank to ensure we're only sending
+            # over the original set of export data.
+            self.export_session(
+                export_contents=self.export_contents,
+            )
+        # If the export contents have differed in some way,
+        # we'll update our session and handle "changed" values.
+        elif self.export_orig_contents != self.export_contents:
+            self.export_session(
+                export_contents=self.export_contents,
+                original_contents=self.export_orig_contents,
+            )
 
     def travel(
         self,
@@ -2658,7 +2566,31 @@ class Bot(object):
                 # assume that no tabs are open, breaking!
                 break
 
-    @event(title="{application_name} Session Started", description="New Bot Session Started...")
+    def export_session(self, export_contents=None, original_contents=None, extra={}):
+        """
+        Export a session to the users licence backend.
+        """
+        self.logger.info(
+            "Attempting to export session now..."
+        )
+        self.license.export_session(
+            export_contents=export_contents,
+            original_contents=original_contents,
+            extra={
+                "version": self.application_version,
+                "configuration": self.configuration["configuration_name"],
+                "window": self.window.__str__(),
+            }
+        )
+
+    def export_prestige(self, prestige_contents):
+        self.logger.info(
+            "Attempting to export prestige now..."
+        )
+        self.license.export_prestige(
+            prestige_contents=prestige_contents,
+        )
+
     def run(self):
         """
         Begin main runtime loop for bot functionality.
@@ -2685,16 +2617,22 @@ class Bot(object):
 
         try:
             self.configure_additional()
-            # Right before running, make sure any scheduled functions
-            # are configured properly.
-            self.schedule_functions()
+            # Ensure that a session is still available even if data
+            # exports are disabled.
+            if not self.configuration["export_data_enabled"]:
+                self.export_session()
             # Any functions that should be ran once on startup
             # can be handled at this point.
             self.execute_startup_functions()
+            # Right before running, make sure any scheduled functions
+            # are configured properly.
+            self.schedule_functions()
 
             while not self.stop_func():
                 try:
                     if self.pause_func():
+                        if not self.pause_date:
+                            self.pause_date = datetime.datetime.now()
                         # Currently paused through the GUI.
                         # Just wait and sleep slightly in between checks.
                         if self.stream.last_message != "Paused...":
@@ -2703,6 +2641,11 @@ class Bot(object):
                             )
                         time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
                     else:
+                        if self.pause_date:
+                            # We were paused before, fixup our schedule and then
+                            # we'll resume.
+                            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
+                            self.pause_date = None
                         # Ensure any pending scheduled jobs are executed at the beginning
                         # of our loop, each time.
                         self.schedule.run_pending()
@@ -2724,6 +2667,10 @@ class Bot(object):
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
                 "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
+            )
+        except ExportContentsException:
+            self.logger.info(
+                "An error occurred while attempting to export data from the game."
             )
         except KeyError as err:
             self.logger.info(

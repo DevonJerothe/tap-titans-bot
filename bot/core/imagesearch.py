@@ -40,6 +40,7 @@ def click_image(
     position,
     button,
     clicks=1,
+    interval=0.0,
     offset=5,
     pause=0,
 ):
@@ -50,7 +51,7 @@ def click_image(
     height, width, channels = img.shape
 
     point = int(position[0] + r(width / 2, offset)), int(position[1] + r(height / 2, offset))
-    window.click(point=point, clicks=clicks, button=button, offset=offset, pause=pause)
+    window.click(point=point, clicks=clicks, interval=interval, button=button, offset=offset, pause=pause)
 
 
 def r(num, rand):

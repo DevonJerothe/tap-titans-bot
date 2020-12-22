@@ -126,28 +126,3 @@ def decrypt_secret(secret):
     return "".join([
         DECRYPT_MAP[character] for character in secret
     ])
-
-
-def most_common_result(results):
-    """
-    Grab the most common result from a list of results.
-    """
-    result = None
-    counter = 0
-    # Looping through each result, performing a check to
-    # see which one is the most common.
-    for res in results:
-        freq = results.count(res)
-        if freq > counter:
-            counter = freq
-            result = res
-    return int(result) if result else None
-
-
-def calculate_percent(amount, percent):
-    """
-    Calculate the percent of a specified amount.
-    """
-    if not amount:
-        return None
-    return int(amount * float(percent) / 100)
