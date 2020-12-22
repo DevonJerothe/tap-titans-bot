@@ -116,7 +116,7 @@ class Bot(object):
                 self.logger.debug(
                     self.license.license
                 )
-                self.license.retrieve(logger=self.logger)
+                self.license.collect_license(logger=self.logger)
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
@@ -243,7 +243,7 @@ class Bot(object):
         # Our local license/application directory should contain a directory of images
         # with their versions, the bot does not care about the versions other than making
         # sure the most recent one is being used. We handle that logic here.
-        with os.scandir(self.license.program_files_directory) as scan:
+        with os.scandir(self.license.program_file_directory) as scan:
             for version in scan:
                 for file in os.scandir(version.path):
                     self.files[file.name.split(".")[0]] = file.path
