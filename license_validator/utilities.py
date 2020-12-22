@@ -44,29 +44,28 @@ def set_license(
         file.write(text)
 
 
-def set_files(
-    files_directory,
-    files,
+def set_file(
+    instance,
+    file_directory,
     logger=None,
 ):
     """
     Update the available images in the directory specified with the images passed in.
     """
-    for file in files:
-        version_path = "%(files_directory)s/%(version)s" % {
-            "files_directory": files_directory,
-            "version": file["version"],
-        }
-        file_path = "%(version_path)s/%(name)s" % {
-            "version_path": version_path,
-            "name": file["name"],
-        }
-        if logger:
-            logger.info(
-                "Writing file: \"%(file_path)s\"..." % {
-                    "file_path": file_path,
-                }
-            )
+    version_path = "%(files_directory)s/%(version)s" % {
+        "files_directory": file_directory,
+        "version": instance["version"],
+    }
+    file_path = "%(version_path)s/%(name)s" % {
+        "version_path": version_path,
+        "name": instance["name"],
+    }
+    if logger:
+        logger.info(
+            "Writing file: \"%(file_path)s\"..." % {
+                "file_path": file_path,
+            }
+        )
         # Ensure the version directory is present for the image
         # that we will be setting up.
         if not os.path.exists(version_path):
@@ -75,33 +74,32 @@ def set_files(
         # Write the actual image file to our directory.
         # Decoding our content back to base64 bytes.
         with open(file_path, mode="wb") as f:
-            f.write(base64.b64decode(file["content"]))
+            f.write(base64.b64decode(instance["content"]))
 
 
-def set_dependencies(
-    dependencies_directory,
-    dependencies,
+def set_dependency(
+    instance,
+    dependency_directory,
     logger=None,
 ):
-    for dependency in dependencies:
-        file_path = "%(dependencies_directory)s/%(name)s" % {
-            "dependencies_directory": dependencies_directory,
-            "name": dependency["name"],
-        }
-        if logger:
-            logger.info(
-                "Writing dependency: \"%(file_path)s\"..." % {
-                    "file_path": file_path,
-                }
-            )
-        # Generate the file itself that contains our dependency.
-        # Dependencies are expected to come in a zip format.
-        with open(file_path, mode="wb") as f:
-            f.write(base64.b64decode(dependency["content"]))
-        # Ensure dependency is extracted properly
-        # after the file is created.
-        with zipfile.ZipFile(file_path, mode="r") as zip_ref:
-            zip_ref.extractall(path=dependencies_directory)
+    file_path = "%(dependencies_directory)s/%(name)s" % {
+        "dependencies_directory": dependency_directory,
+        "name": instance["name"],
+    }
+    if logger:
+        logger.info(
+            "Writing dependency: \"%(file_path)s\"..." % {
+                "file_path": file_path,
+            }
+        )
+    # Generate the file itself that contains our dependency.
+    # Dependencies are expected to come in a zip format.
+    with open(file_path, mode="wb") as f:
+        f.write(base64.b64decode(instance["content"]))
+    # Ensure dependency is extracted properly
+    # after the file is created.
+    with zipfile.ZipFile(file_path, mode="r") as zip_ref:
+        zip_ref.extractall(path=dependency_directory)
 
 
 def changed_contents(
@@ -160,49 +158,12 @@ def changed_contents(
     return new_contents
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def chunks(
+    lst,
+    n,
+):
+    """
+    Yield successive "n" sized chunks from a given list.
+    """
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
