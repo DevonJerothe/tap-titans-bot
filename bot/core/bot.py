@@ -1768,26 +1768,20 @@ class Bot(object):
         self.logger.info(
             "Using perks in game..."
         )
-        timeout_perks_search_cnt = 0
-        timeout_perks_search_max = self.configurations["parameters"]["perks"]["icons_timeout"]
-
         # Travel to the bottom (ish) of the master tab, we'll scroll until
         # we've found the "clan crate" perk, since that's the last one available.
         try:
-            while not self.search(
-                image=self.files["perks_clan_crate"],
-                region=self.configurations["regions"]["perks"]["icons_area"],
-                precision=self.configurations["parameters"]["perks"]["icons_precision"],
-            )[0]:
-                self.drag(
-                    start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
-                    end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
-                    pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                )
-                timeout_perks_search_cnt = self.handle_timeout(
-                    count=timeout_perks_search_cnt,
-                    timeout=timeout_perks_search_max,
-                )
+            self.drag(
+                start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                timeout=self.configurations["parameters"]["perks"]["icons_timeout"],
+                timeout_search_kwargs={
+                    "image": self.files["perks_clan_crate"] if not self.configuration["abyssal"] else self.files["perks_doom"],
+                    "region": self.configurations["regions"]["perks"]["icons_area"],
+                    "precision": self.configurations["parameters"]["perks"]["icons_precision"],
+                },
+            )
         except TimeoutError:
             self.logger.info(
                 "Unable to find the \"clan_crate\" perk in game, skipping perk functionality..."
