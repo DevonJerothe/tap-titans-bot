@@ -311,7 +311,9 @@ class Bot(object):
 
         # Per Prestige Data.
         # ------------------
+        # "close_to_max_ready" - Store a flag to denote that a close to max prestige is ready.
         # "master_levelled" - Store a flag to denote the master being levelled.
+        self.close_to_max_ready = False
         self.master_levelled = False
 
         self.logger.debug(
@@ -319,6 +321,7 @@ class Bot(object):
         )
         self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
+        self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
 
     def schedule_functions(self):
@@ -2184,6 +2187,7 @@ class Bot(object):
         # Update the next artifact that will be upgraded.
         # This is done regardless of upgrade state (success/fail).
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+        self.close_to_max_ready = False
         self.master_levelled = False
 
         # Exporting our prestige once it's finished and right before
@@ -2261,56 +2265,81 @@ class Bot(object):
         self.logger.info(
             "Checking if prestige should be performed due to being close to max stage..."
         )
-        prestige = False
 
-        if self.configurations["global"]["events"]["event_running"]:
-            self.logger.info(
-                "Event is currently running, checking for event icon present on master panel..."
-            )
-            # Event is running, let's check the master panel for
-            # the current event icon.
-            if self.search(
-                image=self.files["prestige_close_to_max_event_icon"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
-            )[0]:
-                prestige = True
-        else:
-            # No event is running, instead, we will open the skill tree,
-            # and check that the reset icon is present.
-            self.logger.info(
-                "No event is currently running, checking for prestige reset on skill tree..."
-            )
-            self.click(
-                point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
-                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
-            )
-            if self.search(
-                image=self.files["prestige_close_to_max_skill_tree_icon"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
-            )[0]:
-                prestige = True
-            # Closing the skill tree once finished.
-            # "prestige" variable will determine next steps below.
-            while self.search(
-                image=self.files["prestige_close_to_max_skill_tree_header"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
-            )[0]:
-                # Looping to exit, careful since not exiting could cause us
-                # to use a skill point, which makes it hard to leave the prompt.
-                self.find_and_click_image(
-                    image=self.files["large_exit"],
-                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
-                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
-                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+        if not self.close_to_max_ready:
+            if self.configurations["global"]["events"]["event_running"] and not self.configuration["abyssal"]:
+                self.logger.info(
+                    "Event is currently running, checking for event icon present on master panel..."
                 )
-        if prestige:
-            self.logger.info(
-                "Prestige is ready..."
-            )
-            self.prestige_execute_or_schedule()
+                # Event is running, let's check the master panel for
+                # the current event icon.
+                if self.search(
+                    image=self.files["prestige_close_to_max_event_icon"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
+                )[0]:
+                    self.close_to_max_ready = True
+            else:
+                # No event is running, instead, we will open the skill tree,
+                # and check that the reset icon is present.
+                if self.configuration["abyssal"]:
+                    self.logger.info(
+                        "Abyssal tournament is enabled, checking for prestige reset on skill tree..."
+                    )
+                else:
+                    self.logger.info(
+                        "No event is currently running, checking for prestige reset on skill tree..."
+                    )
+                self.click(
+                    point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
+                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
+                )
+                if self.search(
+                    image=self.files["prestige_close_to_max_skill_tree_icon"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
+                )[0]:
+                    self.close_to_max_ready = True
+                # Closing the skill tree once finished.
+                # "prestige" variable will determine next steps below.
+                while self.search(
+                    image=self.files["prestige_close_to_max_skill_tree_header"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
+                )[0]:
+                    # Looping to exit, careful since not exiting could cause us
+                    # to use a skill point, which makes it hard to leave the prompt.
+                    self.find_and_click_image(
+                        image=self.files["large_exit"],
+                        region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+                        precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+                        pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+                    )
+        if self.close_to_max_ready:
+            if self.configuration["prestige_close_to_max_fight_boss_enabled"]:
+                self.logger.info(
+                    "Prestige is ready, waiting for fight boss icon to appear..."
+                )
+                # We need to also make sure the fight boss function is no longer
+                # scheduled to run for the rest of this prestige.
+                self.cancel_scheduled_function(tags=self.fight_boss.__name__)
+                # Instead of executing or scheduling our prestige right away,
+                # we will check for the fight boss icon and if it's present,
+                # then we will execute/schedule.
+                if self.search(
+                    image=self.files["fight_boss_icon"],
+                    region=self.configurations["regions"]["fight_boss"]["search_area"],
+                    precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
+                )[0]:
+                    self.logger.info(
+                        "Fight boss icon is present, prestige is ready..."
+                    )
+                    self.prestige()
+            else:
+                self.logger.info(
+                    "Prestige is ready..."
+                )
+                self.prestige_execute_or_schedule()
 
     def tap(self):
         """
