@@ -477,7 +477,7 @@ class Bot(object):
         Cancel a scheduled function if currently scheduled to run.
         """
         if not isinstance(tags, list):
-            tags = list(tags)
+            tags = [tags]
         for tag in tags:
             self.schedule.clear(tag)
 
