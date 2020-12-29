@@ -491,7 +491,7 @@ class Bot(object):
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
             self.export_data: {
-                "enabled": self.configuration["export_data_enabled"],
+                "enabled": self.configuration["export_data_enabled"] and not self.configuration["abyssal"],
                 "execute": self.configurations["global"]["export_data"]["export_data_on_start"],
             },
             self.fight_boss: {
@@ -1769,7 +1769,7 @@ class Bot(object):
             "Using perks in game..."
         )
         # Travel to the bottom (ish) of the master tab, we'll scroll until
-        # we've found the "clan crate" perk, since that's the last one available.
+        # we've found the correct perk, since that's the last one available.
         try:
             self.drag(
                 start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
@@ -1784,7 +1784,9 @@ class Bot(object):
             )
         except TimeoutError:
             self.logger.info(
-                "Unable to find the \"clan_crate\" perk in game, skipping perk functionality..."
+                "Unable to find the \"%(search_perk)s\" perk in game, skipping perk functionality..." % {
+                    "search_perk": "clan_crate" if not self.configuration["abyssal"] else "doom",
+                }
             )
             return
 
@@ -2237,7 +2239,7 @@ class Bot(object):
         # set of exported data, from here, we can then figure out whats changed
         # and send a new session event. If this isn't enabled, we at least get
         # a prestige sent along above.
-        if self.configuration["export_data_enabled"]:
+        if self.configuration["export_data_enabled"] and not self.configuration["abyssal"]:
             self.export_data()
 
         # Handle some forcing of certain functionality post prestige below.
@@ -2853,6 +2855,7 @@ class Bot(object):
             extra={
                 "version": self.application_version,
                 "configuration": self.configuration["configuration_name"],
+                "abyssal": self.configuration["abyssal"],
                 "window": self.window.__str__(),
             }
         )
