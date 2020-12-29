@@ -85,6 +85,10 @@ class Bot(object):
         # jobs, this avoids large delays when waiting
         # to pause/stop
         self.schedule = TitanScheduler()
+        # Flag to represent initial scheduling to help
+        # determine whether or not reset safe functions
+        # should be determined and modified.
+        self.scheduled = False
 
         self.session = session
         self.license = license_obj
@@ -332,75 +336,110 @@ class Bot(object):
         """
         Loop through each available function used during runtime, setting up
         and configuring a scheduler for each one.
-        """
-        self.schedule.clear()
 
-        for function, data in {
+        The following options should be included on each scheduled functions:
+
+        - "enabled"  - Should this function be scheduled at all?
+        - "interval" - How long (in seconds) between each execution?
+        - "reset"    - Should this function be ignored when the scheduler is cleared and reinitialized?
+        """
+        _schedule = {
             self.check_game_state: {
                 "enabled": self.configuration["crash_recovery_enabled"],
                 "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
+                "reset": True,
             },
             self.check_license: {
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
+                "reset": False,
             },
             self.export_data: {
-                "enabled": self.configuration["export_data_enabled"],
+                "enabled": self.configuration["export_data_enabled"] and not self.configuration["abyssal"],
                 "interval": self.configuration["export_data_interval"],
+                "reset": True,
             },
             self.tap: {
                 "enabled": self.configuration["tapping_enabled"],
                 "interval": self.configuration["tapping_interval"],
+                "reset": True,
             },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
                 "interval": self.configurations["global"]["fight_boss"]["fight_boss_interval"],
+                "reset": True,
             },
             self.eggs: {
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "interval": self.configurations["global"]["eggs"]["eggs_interval"],
+                "reset": False,
             },
             self.inbox: {
                 "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
                 "interval": self.configurations["global"]["inbox"]["inbox_interval"],
+                "reset": False,
             },
             self.daily_rewards: {
                 "enabled": self.configurations["global"]["daily_rewards"]["daily_rewards_enabled"],
                 "interval": self.configurations["global"]["daily_rewards"]["daily_rewards_interval"],
+                "reset": False,
             },
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "interval": self.configurations["global"]["achievements"]["achievements_interval"],
+                "reset": False,
             },
             self.level_master: {
                 "enabled": self.configuration["level_master_enabled"],
                 "interval": self.configuration["level_master_interval"],
+                "reset": True,
             },
             self.level_skills: {
                 "enabled": self.configuration["level_skills_enabled"],
                 "interval": self.configuration["level_skills_interval"],
+                "reset": True,
             },
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "interval": self.configuration["activate_skills_interval"],
+                "reset": True,
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
+                "reset": True,
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
                 "interval": self.configuration["perks_interval"],
+                "reset": False,
             },
             self.prestige: {
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
+                "reset": True,
             },
             self.prestige_close_to_max: {
                 "enabled": self.configuration["prestige_close_to_max_enabled"],
                 "interval": self.configurations["global"]["prestige_close_to_max"]["prestige_close_to_max_interval"],
+                "reset": True,
             },
-        }.items():
+        }
+
+        schedule_first_time = False
+
+        if not self.scheduled:
+            schedule_first_time = True
+        else:
+            # If scheduling has already taken place at least once, we'll only clear
+            # the functions that are reset safe, others are ignored and are left as-is.
+            self.cancel_scheduled_function(tags=[
+                function.__name__ for function in _schedule if _schedule[function]["reset"]
+            ])
+
+        for function, data in _schedule.items():
+            if not schedule_first_time and self.scheduled and not data["reset"]:
+                continue
             if data["enabled"]:
                 # We wont schedule any functions that also
                 # have an interval of zero.
@@ -415,6 +454,11 @@ class Bot(object):
                             "function": function.__name__,
                         }
                     )
+        if schedule_first_time:
+            # If were scheduling for the first time, we flip this flag once
+            # after initial scheduling, this lets us reschedule and respect reset
+            # flags on each subsequent reschedule.
+            self.scheduled = True
 
     def schedule_function(self, function, interval):
         """
