@@ -858,11 +858,6 @@ class Bot(object):
                 time.sleep(self.configurations["global"]["search"]["search_list_interval"])
 
                 if pos[0] != -1:
-                    self.logger.debug(
-                        "Image: \"%(image)s\" was found." % {
-                            "image": i,
-                        }
-                    )
                     break
         else:
             self.logger.debug(
