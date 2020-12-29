@@ -643,7 +643,7 @@ class Bot(object):
             self.logger.debug(
                 "Checking license status..."
             )
-            self.license.retrieve()
+            self.license.collect_license_data()
         except TimeoutError:
             self.logger.info(
                 "Authentication timeout was reached... Check your internet connection and please try again."
