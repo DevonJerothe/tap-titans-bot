@@ -49,7 +49,6 @@ class LicenseValidator(object):
 
     Modify the settings.py file to manage the class instance generated.
     """
-
     def __init__(self):
         """
         Initializing will setup and find certain variables and/or system files, the license key
@@ -192,7 +191,7 @@ class LicenseValidator(object):
 
         if response["status"] == VALIDATION_SYNCED:
             logger.info(
-               "DONE..."
+               "Done..."
             )
         if response["status"] == VALIDATION_SYNC:
             logger.info(
@@ -235,7 +234,7 @@ class LicenseValidator(object):
                         **setter_kwargs,
                     )
             logger.info(
-                "DONE..."
+                "Done..."
             )
 
     def collect_license_data(self):
@@ -354,7 +353,7 @@ class LicenseValidator(object):
                 "export_contents": json.dumps(export_contents or {} if not original_contents else changed_contents(
                     export_contents=export_contents,
                     original_contents=original_contents,
-                )) if export_contents else None,
+                )) if export_contents else "{}",
                 **self.program_data(),
                 **extra,
             },
