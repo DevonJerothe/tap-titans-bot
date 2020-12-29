@@ -499,8 +499,8 @@ class Bot(object):
                 )
                 function()
 
-    @staticmethod
     def handle_timeout(
+        self,
         count,
         timeout,
     ):
@@ -510,6 +510,12 @@ class Bot(object):
         The given count is incremented by one and checked to see
         if we have exceeded the specified dynamic timeout.
         """
+        self.logger.debug(
+            "Handling timeout %(count)s/%(timeout)s..." % {
+                "count": count,
+                "timeout": timeout,
+            }
+        )
         count += 1
 
         if count <= timeout:
@@ -906,21 +912,16 @@ class Bot(object):
             and region[1] <= point[1] <= region[3]
         )
 
-    def click(
-        self,
+    @staticmethod
+    def _click(
         point,
-        window=None,
+        window,
         clicks=1,
         interval=0.0,
         button="left",
         offset=5,
         pause=0.001,
     ):
-        """
-        Perform a click on the current window.
-        """
-        if not window:
-            window = self.window
         window.click(
             point=point,
             clicks=clicks,
@@ -930,7 +931,65 @@ class Bot(object):
             pause=pause,
         )
 
-    def find_and_click_image(
+    def click(
+        self,
+        point,
+        window=None,
+        clicks=1,
+        interval=0.0,
+        button="left",
+        offset=5,
+        pause=0.001,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
+    ):
+        """
+        Perform a click on the current window.
+        """
+        _click_kwargs = {
+            "point": point,
+            "window": window or self.window,
+            "clicks": clicks,
+            "interval": interval,
+            "button": button,
+            "offset": offset,
+            "pause": pause,
+        }
+        if not timeout:
+            self._click(
+                **_click_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper. This works similarly to the
+            # find and click timeouts, but we must use searching here explicitly.
+            timeout_cnt = 0
+
+            if timeout_search_while_not:
+                while not self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._click(
+                        **_click_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+            else:
+                while self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._click(
+                        **_click_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+
+    def _find_and_click_image(
         self,
         image,
         region=None,
@@ -940,10 +999,8 @@ class Bot(object):
         button="left",
         offset=5,
         pause=0.0,
+        pause_not_found=0.0,
     ):
-        """
-        Attempt to find and click on the specified image on the current window.
-        """
         found, position, img = self.search(
             image=image,
             region=region,
@@ -959,7 +1016,101 @@ class Bot(object):
                 offset=offset,
                 pause=pause,
             )
+        else:
+            time.sleep(
+                pause_not_found
+            )
+        # Always returning whether or not we found and most likely,
+        # clicked on the image specified.
         return found
+
+    def find_and_click_image(
+        self,
+        image,
+        region=None,
+        precision=0.8,
+        clicks=1,
+        interval=0.0,
+        button="left",
+        offset=5,
+        pause=0.0,
+        pause_not_found=0.0,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
+    ):
+        """
+        Attempt to find and click on the specified image on the current window.
+
+        Optional timeout parameters can be applied here to handle while loops to try
+        and maximize the efficiency of finding and clicking, note that if a timeout is used,
+        the calling functions should be wrapped in a try/except to handle timeouts.
+        """
+        _find_and_click_kwargs = {
+            "image": image,
+            "region": region,
+            "precision": precision,
+            "clicks": 1,
+            "interval": interval,
+            "button": button,
+            "offset": offset,
+            "pause": pause,
+            "pause_not_found": pause_not_found,
+        }
+        if not timeout:
+            return self._find_and_click_image(
+                **_find_and_click_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper.
+            timeout_cnt = 0
+
+            if timeout_search_kwargs:
+                if timeout_search_while_not:
+                    while not self.search(
+                        **timeout_search_kwargs
+                    )[0]:
+                        self._find_and_click_image(
+                            **_find_and_click_kwargs,
+                        )
+                        timeout_cnt = self.handle_timeout(
+                            count=timeout_cnt,
+                            timeout=timeout,
+                        )
+                else:
+                    while self.search(
+                        **timeout_search_kwargs
+                    )[0]:
+                        self._find_and_click_image(
+                            **_find_and_click_kwargs,
+                        )
+                        timeout_cnt = self.handle_timeout(
+                            count=timeout_cnt,
+                            timeout=timeout,
+                        )
+            else:
+                while not self._find_and_click_image(
+                    **_find_and_click_kwargs,
+                ):
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+
+    def _drag(
+        self,
+        start,
+        end,
+        button="left",
+        pause=0.0,
+    ):
+        self.window.drag(
+            start=start,
+            end=end,
+            button=button,
+            pause=pause,
+        )
 
     def drag(
         self,
@@ -967,16 +1118,51 @@ class Bot(object):
         end,
         button="left",
         pause=0.0,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
     ):
         """
         Perform a drag on the current window.
         """
-        self.window.drag(
-            start=start,
-            end=end,
-            button=button,
-            pause=pause,
-        )
+        _drag_kwargs = {
+            "start": start,
+            "end": end,
+            "button": button,
+            "pause": pause,
+        }
+        if not timeout:
+            self._drag(
+                **_drag_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper. This works similarly to the
+            # find and click timeouts, but we must use searching here explicitly.
+            timeout_cnt = 0
+
+            if timeout_search_while_not:
+                while not self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self.drag(
+                        **_drag_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+            else:
+                while self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._drag(
+                        **_drag_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
 
     def click_image(
         self,
