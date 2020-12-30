@@ -85,6 +85,10 @@ class Bot(object):
         # jobs, this avoids large delays when waiting
         # to pause/stop
         self.schedule = TitanScheduler()
+        # Flag to represent initial scheduling to help
+        # determine whether or not reset safe functions
+        # should be determined and modified.
+        self.scheduled = False
 
         self.session = session
         self.license = license_obj
@@ -279,28 +283,32 @@ class Bot(object):
             self.files["travel_artifacts_icon"]: "artifacts",
         }
 
-        tiers = [
-            tier for tier, enabled in [
-                ("s", self.configuration["artifacts_upgrade_tier_s"]),
-                ("a", self.configuration["artifacts_upgrade_tier_a"]),
-                ("b", self.configuration["artifacts_upgrade_tier_b"]),
-                ("c", self.configuration["artifacts_upgrade_tier_c"]),
-            ] if enabled
-        ]
-
-        upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
-        if self.configuration["artifacts_upgrade_artifact"]:
-            for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
-                if artifact not in upgrade_artifacts:
-                    upgrade_artifacts.append(artifact)
-        if self.configuration["artifacts_ignore_artifact"]:
-            for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
-                if artifact in upgrade_artifacts:
-                    upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
-        if self.configuration["artifacts_remove_max_level"]:
-            upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
-        if self.configuration["artifacts_shuffle"]:
-            random.shuffle(upgrade_artifacts)
+        if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
+            tiers = [
+                tier for tier, enabled in [
+                    ("s", self.configuration["artifacts_upgrade_tier_s"]),
+                    ("a", self.configuration["artifacts_upgrade_tier_a"]),
+                    ("b", self.configuration["artifacts_upgrade_tier_b"]),
+                    ("c", self.configuration["artifacts_upgrade_tier_c"]),
+                ] if enabled
+            ]
+            upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
+            if self.configuration["artifacts_upgrade_artifact"]:
+                for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
+                    if artifact not in upgrade_artifacts:
+                        upgrade_artifacts.append(artifact)
+            if self.configuration["artifacts_ignore_artifact"]:
+                for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
+                    if artifact in upgrade_artifacts:
+                        upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
+            if self.configuration["artifacts_remove_max_level"]:
+                upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
+            if self.configuration["artifacts_shuffle"]:
+                random.shuffle(upgrade_artifacts)
+        else:
+            # In case of disabled artifact base settings but a user
+            # has some specific artifacts filled out or enabled.
+            upgrade_artifacts = None
 
         # Artifacts Data.
         # ------------------
@@ -311,7 +319,9 @@ class Bot(object):
 
         # Per Prestige Data.
         # ------------------
+        # "close_to_max_ready" - Store a flag to denote that a close to max prestige is ready.
         # "master_levelled" - Store a flag to denote the master being levelled.
+        self.close_to_max_ready = False
         self.master_levelled = False
 
         self.logger.debug(
@@ -319,81 +329,117 @@ class Bot(object):
         )
         self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
+        self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
 
     def schedule_functions(self):
         """
         Loop through each available function used during runtime, setting up
         and configuring a scheduler for each one.
-        """
-        self.schedule.clear()
 
-        for function, data in {
+        The following options should be included on each scheduled functions:
+
+        - "enabled"  - Should this function be scheduled at all?
+        - "interval" - How long (in seconds) between each execution?
+        - "reset"    - Should this function be ignored when the scheduler is cleared and reinitialized?
+        """
+        _schedule = {
             self.check_game_state: {
                 "enabled": self.configuration["crash_recovery_enabled"],
                 "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
+                "reset": True,
             },
             self.check_license: {
                 "enabled": self.configurations["global"]["check_license"]["check_license_enabled"],
                 "interval": self.configurations["global"]["check_license"]["check_license_interval"],
+                "reset": False,
             },
             self.export_data: {
-                "enabled": self.configuration["export_data_enabled"],
+                "enabled": self.configuration["export_data_enabled"] and not self.configuration["abyssal"],
                 "interval": self.configuration["export_data_interval"],
+                "reset": True,
             },
             self.tap: {
                 "enabled": self.configuration["tapping_enabled"],
                 "interval": self.configuration["tapping_interval"],
+                "reset": True,
             },
             self.fight_boss: {
                 "enabled": self.configurations["global"]["fight_boss"]["fight_boss_enabled"],
                 "interval": self.configurations["global"]["fight_boss"]["fight_boss_interval"],
+                "reset": True,
             },
             self.eggs: {
                 "enabled": self.configurations["global"]["eggs"]["eggs_enabled"],
                 "interval": self.configurations["global"]["eggs"]["eggs_interval"],
+                "reset": False,
             },
             self.inbox: {
                 "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
                 "interval": self.configurations["global"]["inbox"]["inbox_interval"],
+                "reset": False,
             },
             self.daily_rewards: {
                 "enabled": self.configurations["global"]["daily_rewards"]["daily_rewards_enabled"],
                 "interval": self.configurations["global"]["daily_rewards"]["daily_rewards_interval"],
+                "reset": False,
             },
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "interval": self.configurations["global"]["achievements"]["achievements_interval"],
+                "reset": False,
             },
             self.level_master: {
                 "enabled": self.configuration["level_master_enabled"],
                 "interval": self.configuration["level_master_interval"],
+                "reset": True,
             },
             self.level_skills: {
                 "enabled": self.configuration["level_skills_enabled"],
                 "interval": self.configuration["level_skills_interval"],
+                "reset": True,
             },
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "interval": self.configuration["activate_skills_interval"],
+                "reset": True,
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
+                "reset": True,
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
                 "interval": self.configuration["perks_interval"],
+                "reset": False,
             },
             self.prestige: {
                 "enabled": self.configuration["prestige_time_enabled"],
                 "interval": self.configuration["prestige_time_interval"],
+                "reset": True,
             },
             self.prestige_close_to_max: {
                 "enabled": self.configuration["prestige_close_to_max_enabled"],
                 "interval": self.configurations["global"]["prestige_close_to_max"]["prestige_close_to_max_interval"],
+                "reset": True,
             },
-        }.items():
+        }
+
+        schedule_first_time = False
+
+        if not self.scheduled:
+            schedule_first_time = True
+        else:
+            # If scheduling has already taken place at least once, we'll only clear
+            # the functions that are reset safe, others are ignored and are left as-is.
+            self.cancel_scheduled_function(tags=[
+                function.__name__ for function in _schedule if _schedule[function]["reset"]
+            ])
+
+        for function, data in _schedule.items():
+            if not schedule_first_time and self.scheduled and not data["reset"]:
+                continue
             if data["enabled"]:
                 # We wont schedule any functions that also
                 # have an interval of zero.
@@ -408,6 +454,11 @@ class Bot(object):
                             "function": function.__name__,
                         }
                     )
+        if schedule_first_time:
+            # If were scheduling for the first time, we flip this flag once
+            # after initial scheduling, this lets us reschedule and respect reset
+            # flags on each subsequent reschedule.
+            self.scheduled = True
 
     def schedule_function(self, function, interval):
         """
@@ -426,7 +477,7 @@ class Bot(object):
         Cancel a scheduled function if currently scheduled to run.
         """
         if not isinstance(tags, list):
-            tags = list(tags)
+            tags = [tags]
         for tag in tags:
             self.schedule.clear(tag)
 
@@ -440,7 +491,7 @@ class Bot(object):
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
             self.export_data: {
-                "enabled": self.configuration["export_data_enabled"],
+                "enabled": self.configuration["export_data_enabled"] and not self.configuration["abyssal"],
                 "execute": self.configurations["global"]["export_data"]["export_data_on_start"],
             },
             self.fight_boss: {
@@ -499,8 +550,8 @@ class Bot(object):
                 )
                 function()
 
-    @staticmethod
     def handle_timeout(
+        self,
         count,
         timeout,
     ):
@@ -510,6 +561,12 @@ class Bot(object):
         The given count is incremented by one and checked to see
         if we have exceeded the specified dynamic timeout.
         """
+        self.logger.debug(
+            "Handling timeout %(count)s/%(timeout)s..." % {
+                "count": count,
+                "timeout": timeout,
+            }
+        )
         count += 1
 
         if count <= timeout:
@@ -634,7 +691,7 @@ class Bot(object):
             self.logger.debug(
                 "Checking license status..."
             )
-            self.license.retrieve()
+            self.license.collect_license_data()
         except TimeoutError:
             self.logger.info(
                 "Authentication timeout was reached... Check your internet connection and please try again."
@@ -801,11 +858,6 @@ class Bot(object):
                 time.sleep(self.configurations["global"]["search"]["search_list_interval"])
 
                 if pos[0] != -1:
-                    self.logger.debug(
-                        "Image: \"%(image)s\" was found." % {
-                            "image": i,
-                        }
-                    )
                     break
         else:
             self.logger.debug(
@@ -906,21 +958,16 @@ class Bot(object):
             and region[1] <= point[1] <= region[3]
         )
 
-    def click(
-        self,
+    @staticmethod
+    def _click(
         point,
-        window=None,
+        window,
         clicks=1,
         interval=0.0,
         button="left",
         offset=5,
         pause=0.001,
     ):
-        """
-        Perform a click on the current window.
-        """
-        if not window:
-            window = self.window
         window.click(
             point=point,
             clicks=clicks,
@@ -930,7 +977,65 @@ class Bot(object):
             pause=pause,
         )
 
-    def find_and_click_image(
+    def click(
+        self,
+        point,
+        window=None,
+        clicks=1,
+        interval=0.0,
+        button="left",
+        offset=5,
+        pause=0.001,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
+    ):
+        """
+        Perform a click on the current window.
+        """
+        _click_kwargs = {
+            "point": point,
+            "window": window or self.window,
+            "clicks": clicks,
+            "interval": interval,
+            "button": button,
+            "offset": offset,
+            "pause": pause,
+        }
+        if not timeout:
+            self._click(
+                **_click_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper. This works similarly to the
+            # find and click timeouts, but we must use searching here explicitly.
+            timeout_cnt = 0
+
+            if timeout_search_while_not:
+                while not self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._click(
+                        **_click_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+            else:
+                while self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._click(
+                        **_click_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+
+    def _find_and_click_image(
         self,
         image,
         region=None,
@@ -940,10 +1045,8 @@ class Bot(object):
         button="left",
         offset=5,
         pause=0.0,
+        pause_not_found=0.0,
     ):
-        """
-        Attempt to find and click on the specified image on the current window.
-        """
         found, position, img = self.search(
             image=image,
             region=region,
@@ -959,7 +1062,101 @@ class Bot(object):
                 offset=offset,
                 pause=pause,
             )
+        else:
+            time.sleep(
+                pause_not_found
+            )
+        # Always returning whether or not we found and most likely,
+        # clicked on the image specified.
         return found
+
+    def find_and_click_image(
+        self,
+        image,
+        region=None,
+        precision=0.8,
+        clicks=1,
+        interval=0.0,
+        button="left",
+        offset=5,
+        pause=0.0,
+        pause_not_found=0.0,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
+    ):
+        """
+        Attempt to find and click on the specified image on the current window.
+
+        Optional timeout parameters can be applied here to handle while loops to try
+        and maximize the efficiency of finding and clicking, note that if a timeout is used,
+        the calling functions should be wrapped in a try/except to handle timeouts.
+        """
+        _find_and_click_kwargs = {
+            "image": image,
+            "region": region,
+            "precision": precision,
+            "clicks": 1,
+            "interval": interval,
+            "button": button,
+            "offset": offset,
+            "pause": pause,
+            "pause_not_found": pause_not_found,
+        }
+        if not timeout:
+            return self._find_and_click_image(
+                **_find_and_click_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper.
+            timeout_cnt = 0
+
+            if timeout_search_kwargs:
+                if timeout_search_while_not:
+                    while not self.search(
+                        **timeout_search_kwargs
+                    )[0]:
+                        self._find_and_click_image(
+                            **_find_and_click_kwargs,
+                        )
+                        timeout_cnt = self.handle_timeout(
+                            count=timeout_cnt,
+                            timeout=timeout,
+                        )
+                else:
+                    while self.search(
+                        **timeout_search_kwargs
+                    )[0]:
+                        self._find_and_click_image(
+                            **_find_and_click_kwargs,
+                        )
+                        timeout_cnt = self.handle_timeout(
+                            count=timeout_cnt,
+                            timeout=timeout,
+                        )
+            else:
+                while not self._find_and_click_image(
+                    **_find_and_click_kwargs,
+                ):
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+
+    def _drag(
+        self,
+        start,
+        end,
+        button="left",
+        pause=0.0,
+    ):
+        self.window.drag(
+            start=start,
+            end=end,
+            button=button,
+            pause=pause,
+        )
 
     def drag(
         self,
@@ -967,16 +1164,51 @@ class Bot(object):
         end,
         button="left",
         pause=0.0,
+        timeout=None,
+        timeout_search_while_not=True,
+        timeout_search_kwargs=None,
     ):
         """
         Perform a drag on the current window.
         """
-        self.window.drag(
-            start=start,
-            end=end,
-            button=button,
-            pause=pause,
-        )
+        _drag_kwargs = {
+            "start": start,
+            "end": end,
+            "button": button,
+            "pause": pause,
+        }
+        if not timeout:
+            self._drag(
+                **_drag_kwargs,
+            )
+        else:
+            # Timeouts are enabled, looping and try/excepting properly
+            # to handle this and pausing proper. This works similarly to the
+            # find and click timeouts, but we must use searching here explicitly.
+            timeout_cnt = 0
+
+            if timeout_search_while_not:
+                while not self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self.drag(
+                        **_drag_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
+            else:
+                while self.search(
+                    **timeout_search_kwargs
+                )[0]:
+                    self._drag(
+                        **_drag_kwargs,
+                    )
+                    timeout_cnt = self.handle_timeout(
+                        count=timeout_cnt,
+                        timeout=timeout,
+                    )
 
     def click_image(
         self,
@@ -1006,43 +1238,39 @@ class Bot(object):
         """
         Ensure a boss is being fought currently if one is available.
         """
-        timeout_fight_boss_cnt = 0
-        timeout_fight_boss_max = self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"]
-
         if not self.search(
             image=self.files["fight_boss_icon"],
             region=self.configurations["regions"]["fight_boss"]["search_area"],
             precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
         )[0]:
             # Return early, boss fight is already in progress.
-            # or, we're almost at another fight, in which case,
-            # we can just keep going.
-            return
+            # or, we're almost at another fight.
+            self.logger.debug(
+                "Boss fight is already initiated or a non boss encounter is active..."
+            )
         else:
-            while self.search(
-                image=self.files["fight_boss_icon"],
-                region=self.configurations["regions"]["fight_boss"]["search_area"],
-                precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-            )[0]:
-                try:
-                    self.logger.info(
-                        "Attempting to initiate boss fight..."
-                    )
-                    self.find_and_click_image(
-                        image=self.files["fight_boss_icon"],
-                        region=self.configurations["regions"]["fight_boss"]["search_area"],
-                        precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
-                    )
-                    time.sleep(self.configurations["parameters"]["fight_boss"]["search_not_found_pause"])
-                    timeout_fight_boss_cnt = self.handle_timeout(
-                        count=timeout_fight_boss_cnt,
-                        timeout=timeout_fight_boss_max,
-                    )
-                except TimeoutError:
-                    self.logger.info(
-                        "Boss fight could not be initiated, skipping..."
-                    )
-                    return
+            try:
+                self.logger.info(
+                    "Attempting to initiate boss fight..."
+                )
+                self.find_and_click_image(
+                    image=self.files["fight_boss_icon"],
+                    region=self.configurations["regions"]["fight_boss"]["search_area"],
+                    precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+                    pause=self.configurations["parameters"]["fight_boss"]["search_pause"],
+                    pause_not_found=self.configurations["parameters"]["fight_boss"]["search_pause_not_found"],
+                    timeout=self.configurations["parameters"]["fight_boss"]["fight_boss_timeout"],
+                    timeout_search_while_not=False,
+                    timeout_search_kwargs={
+                        "image": self.files["fight_boss_icon"],
+                        "region": self.configurations["regions"]["fight_boss"]["search_area"],
+                        "precision": self.configurations["parameters"]["fight_boss"]["search_precision"],
+                    },
+                )
+            except TimeoutError:
+                self.logger.info(
+                    "Boss fight could not be initiated, skipping..."
+                )
             self.logger.info(
                 "Boss fight initiated..."
             )
@@ -1051,34 +1279,35 @@ class Bot(object):
         """
         Ensure a boss is not being fought currently.
         """
-        timeout_leave_boss_cnt = 0
-        timeout_leave_boss_max = self.configurations["parameters"]["leave_boss"]["leave_boss_timeout"]
-
-        while not self.search(
+        if self.search(
             image=self.files["fight_boss_icon"],
             region=self.configurations["regions"]["fight_boss"]["search_area"],
-            precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+            precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
         )[0]:
+            # Return early, a boss fight is not already in progress,
+            # or, we're almost at another boss fight.
+            self.logger.info(
+                "Boss fight is already not active..."
+            )
+        else:
             try:
                 self.find_and_click_image(
                     image=self.files["leave_boss_icon"],
                     region=self.configurations["regions"]["leave_boss"]["search_area"],
                     precision=self.configurations["parameters"]["leave_boss"]["search_precision"],
-                )
-                # Always perform the pause sleep, regardless of the image being found.
-                time.sleep(self.configurations["parameters"]["leave_boss"]["search_pause"])
-                timeout_leave_boss_cnt = self.handle_timeout(
-                    count=timeout_leave_boss_cnt,
-                    timeout=timeout_leave_boss_max,
+                    pause=self.configurations["parameters"]["leave_boss"]["search_pause"],
+                    pause_not_found=self.configurations["parameters"]["leave_boss"]["search_pause_not_found"],
+                    timeout=self.configurations["parameters"]["leave_boss"]["leave_boss_timeout"],
+                    timeout_search_kwargs={
+                        "image": self.files["fight_boss_icon"],
+                        "region": self.configurations["regions"]["fight_boss"]["search_area"],
+                        "precision": self.configurations["parameters"]["fight_boss"]["search_precision"],
+                    },
                 )
             except TimeoutError:
                 self.logger.info(
                     "Boss fight is not currently in progress, continuing..."
                 )
-                return
-        self.logger.info(
-            "Boss fight is now not active..."
-        )
 
     def fairies(self):
         """
@@ -1107,28 +1336,25 @@ class Bot(object):
             if found:
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
-                # (This is done through pi-hole, unrelated to our code here).
+                # (This is done through ad blocking, unrelated to our code here).
                 if self.configuration["ad_blocking_enabled"]:
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
                     try:
-                        timeout_fairy_ad_block_cnt = 0
-                        timeout_fairy_ad_block_max = self.configurations["parameters"]["fairies"]["ad_block_timeout"]
-
-                        while not self.search(
-                            image=self.files["fairies_collect"],
+                        self.find_and_click_image(
+                            image=self.files["fairies_watch"],
                             region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
                             precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
-                        )[0]:
-                            self.click(
-                                point=self.configurations["points"]["fairies"]["collect_or_watch"],
-                                pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
-                            )
-                            timeout_fairy_ad_block_cnt = self.handle_timeout(
-                                count=timeout_fairy_ad_block_cnt,
-                                timeout=timeout_fairy_ad_block_max,
-                            )
+                            pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
+                            pause_not_found=self.configurations["parameters"]["fairies"]["ad_block_pause_not_found"],
+                            timeout=self.configurations["parameters"]["fairies"]["ad_block_timeout"],
+                            timeout_search_kwargs={
+                                "image": self.files["fairies_collect"],
+                                "region": self.configurations["regions"]["fairies"]["ad_block_collect_area"],
+                                "precision": self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
+                            },
+                        )
                     except TimeoutError:
                         self.logger.info(
                             "Unable to handle fairy ad through ad blocking mechanism, skipping..."
@@ -1136,13 +1362,17 @@ class Bot(object):
                         self.click_image(
                             image=image,
                             position=no_thanks_pos,
+                            pause=self.configurations["parameters"]["fairies"]["no_thanks_pause"],
                         )
                         return
+                    # At this point, the collect options is available
+                    # to the user, attempt to collect the fairy reward.
                     self.find_and_click_image(
                         image=self.files["fairies_collect"],
                         region=self.configurations["regions"]["fairies"]["ad_block_collect_area"],
                         precision=self.configurations["parameters"]["fairies"]["ad_block_collect_precision"],
                         pause=self.configurations["parameters"]["fairies"]["ad_block_pause"],
+                        timeout=self.configurations["parameters"]["fairies"]["ad_block_timeout"],
                     )
                     self.logger.info(
                         "Fairy ad has been collected through ad blocking..."
@@ -1538,29 +1768,25 @@ class Bot(object):
         self.logger.info(
             "Using perks in game..."
         )
-        timeout_perks_search_cnt = 0
-        timeout_perks_search_max = self.configurations["parameters"]["perks"]["icons_timeout"]
-
         # Travel to the bottom (ish) of the master tab, we'll scroll until
-        # we've found the "clan crate" perk, since that's the last one available.
+        # we've found the correct perk, since that's the last one available.
         try:
-            while not self.search(
-                image=self.files["perks_clan_crate"],
-                region=self.configurations["regions"]["perks"]["icons_area"],
-                precision=self.configurations["parameters"]["perks"]["icons_precision"],
-            )[0]:
-                self.drag(
-                    start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
-                    end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
-                    pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                )
-                timeout_perks_search_cnt = self.handle_timeout(
-                    count=timeout_perks_search_cnt,
-                    timeout=timeout_perks_search_max,
-                )
+            self.drag(
+                start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                timeout=self.configurations["parameters"]["perks"]["icons_timeout"],
+                timeout_search_kwargs={
+                    "image": self.files["perks_clan_crate"] if not self.configuration["abyssal"] else self.files["perks_doom"],
+                    "region": self.configurations["regions"]["perks"]["icons_area"],
+                    "precision": self.configurations["parameters"]["perks"]["icons_precision"],
+                },
+            )
         except TimeoutError:
             self.logger.info(
-                "Unable to find the \"clan_crate\" perk in game, skipping perk functionality..."
+                "Unable to find the \"%(search_perk)s\" perk in game, skipping perk functionality..." % {
+                    "search_perk": "clan_crate" if not self.configuration["abyssal"] else "doom",
+                }
             )
             return
 
@@ -1712,6 +1938,9 @@ class Bot(object):
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
+
+        Some extra care is put into performing timeouts and looping until
+        certain actions are finished to ensure the prestige takes place.
         """
         self.travel_to_master()
         self.leave_boss()
@@ -1719,9 +1948,6 @@ class Bot(object):
         self.logger.info(
             "Attempting to prestige in game now..."
         )
-        self.export_prestige(prestige_contents={
-            "upgradeArtifact": self.next_artifact_upgrade,
-        })
 
         tournament_prestige = False
 
@@ -1749,28 +1975,45 @@ class Bot(object):
                 color_range=self.configurations["colors"]["tournaments"]["tournaments_ready_range"],
             ):
                 tournament_prestige = True
-                # Tournament is available and to be joined... Attempting to join and skip
+                # Tournament is available and ready to be joined... Attempting to join and skip
                 # prestige functionality below.
                 self.click(
                     point=self.configurations["points"]["tournaments"]["tournaments_icon"],
                     pause=self.configurations["parameters"]["tournaments"]["icon_pause"],
                 )
-                if self.find_and_click_image(
-                    image=self.files["tournaments_join"],
-                    region=self.configurations["regions"]["tournaments"]["join_area"],
-                    precision=self.configurations["parameters"]["tournaments"]["join_precision"],
-                    pause=self.configurations["parameters"]["tournaments"]["join_pause"],
-                ):
+                try:
                     self.logger.info(
                         "Performing tournament prestige now..."
+                    )
+                    self.find_and_click_image(
+                        image=self.files["tournaments_join"],
+                        region=self.configurations["regions"]["tournaments"]["join_area"],
+                        precision=self.configurations["parameters"]["tournaments"]["join_precision"],
+                        pause=self.configurations["parameters"]["tournaments"]["join_pause"],
+                        timeout=self.configurations["parameters"]["tournaments"]["join_timeout"],
+                        timeout_search_while_not=False,
+                        timeout_search_kwargs={
+                            "image": self.files["tournaments_join"],
+                            "region": self.configurations["regions"]["tournaments"]["join_area"],
+                            "precision": self.configurations["parameters"]["tournaments"]["join_precision"],
+                        },
                     )
                     self.find_and_click_image(
                         image=self.files["prestige_confirm_confirm_icon"],
                         region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
                         precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-                        clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
-                        interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
                         pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                        timeout=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_timeout"],
+                        timeout_search_while_not=False,
+                        timeout_search_kwargs={
+                            "image": self.files["prestige_confirm_confirm_icon"],
+                            "region": self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                            "precision": self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                        },
+                    )
+                except TimeoutError:
+                    self.logger.info(
+                        "Timeout was reached while trying to join tournament, skipping..."
                     )
             # Tournament is in a "red" state, one we joined is now
             # over and rewards are available.
@@ -1799,29 +2042,47 @@ class Bot(object):
                     )
 
         if not tournament_prestige:
-            self.logger.info(
-                "Performing prestige now..."
-            )
-            self.find_and_click_image(
-                image=self.files["prestige_icon"],
-                region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
-                precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
-                pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
-            )
-            self.find_and_click_image(
-                image=self.files["prestige_confirm_icon"],
-                region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
-                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
-                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
-            )
-            self.find_and_click_image(
-                image=self.files["prestige_confirm_confirm_icon"],
-                region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
-                precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
-                clicks=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_clicks"],
-                interval=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_interval"],
-                pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
-            )
+            try:
+                self.logger.info(
+                    "Performing prestige now..."
+                )
+                self.find_and_click_image(
+                    image=self.files["prestige_icon"],
+                    region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                    precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+                    pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
+                    timeout=self.configurations["parameters"]["prestige"]["prestige_icon_timeout"],
+                    timeout_search_while_not=False,
+                    timeout_search_kwargs={
+                        "image": self.files["prestige_icon"],
+                        "region": self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                        "precision": self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+                    },
+                )
+                self.find_and_click_image(
+                    image=self.files["prestige_confirm_icon"],
+                    region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
+                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_precision"],
+                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_pause"],
+                    timeout=self.configurations["parameters"]["prestige"]["prestige_confirm_icon_timeout"],
+                )
+                self.find_and_click_image(
+                    image=self.files["prestige_confirm_confirm_icon"],
+                    region=self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                    precision=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                    pause=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_pause"],
+                    timeout=self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_timeout"],
+                    timeout_search_while_not=False,
+                    timeout_search_kwargs={
+                        "image": self.files["prestige_confirm_confirm_icon"],
+                        "region": self.configurations["regions"]["prestige"]["prestige_confirm_confirm_icon_area"],
+                        "precision": self.configurations["parameters"]["prestige"]["prestige_confirm_confirm_icon_precision"],
+                    },
+                )
+            except TimeoutError:
+                self.logger.info(
+                    "Timeout was reached while trying to perform prestige, skipping..."
+                )
             # Waiting here through the confirm_confirm_icon_pause for the prestige
             # animation to be finished before moving on...
         if self.configuration["artifacts_enabled"]:
@@ -1965,13 +2226,20 @@ class Bot(object):
         # Update the next artifact that will be upgraded.
         # This is done regardless of upgrade state (success/fail).
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+        self.close_to_max_ready = False
         self.master_levelled = False
+
+        # Exporting our prestige once it's finished and right before
+        # exporting session data (if enabled).
+        self.export_prestige(prestige_contents={
+            "upgradeArtifact": self.next_artifact_upgrade,
+        })
 
         # Once the prestige has finished, we need to update our most upto date
         # set of exported data, from here, we can then figure out whats changed
         # and send a new session event. If this isn't enabled, we at least get
         # a prestige sent along above.
-        if self.configuration["export_data_enabled"]:
+        if self.configuration["export_data_enabled"] and not self.configuration["abyssal"]:
             self.export_data()
 
         # Handle some forcing of certain functionality post prestige below.
@@ -2036,56 +2304,81 @@ class Bot(object):
         self.logger.info(
             "Checking if prestige should be performed due to being close to max stage..."
         )
-        prestige = False
 
-        if self.configurations["global"]["events"]["event_running"]:
-            self.logger.info(
-                "Event is currently running, checking for event icon present on master panel..."
-            )
-            # Event is running, let's check the master panel for
-            # the current event icon.
-            if self.search(
-                image=self.files["prestige_close_to_max_event_icon"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
-            )[0]:
-                prestige = True
-        else:
-            # No event is running, instead, we will open the skill tree,
-            # and check that the reset icon is present.
-            self.logger.info(
-                "No event is currently running, checking for prestige reset on skill tree..."
-            )
-            self.click(
-                point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
-                pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
-            )
-            if self.search(
-                image=self.files["prestige_close_to_max_skill_tree_icon"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
-            )[0]:
-                prestige = True
-            # Closing the skill tree once finished.
-            # "prestige" variable will determine next steps below.
-            while self.search(
-                image=self.files["prestige_close_to_max_skill_tree_header"],
-                region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
-                precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
-            )[0]:
-                # Looping to exit, careful since not exiting could cause us
-                # to use a skill point, which makes it hard to leave the prompt.
-                self.find_and_click_image(
-                    image=self.files["large_exit"],
-                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
-                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
-                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+        if not self.close_to_max_ready:
+            if self.configurations["global"]["events"]["event_running"] and not self.configuration["abyssal"]:
+                self.logger.info(
+                    "Event is currently running, checking for event icon present on master panel..."
                 )
-        if prestige:
-            self.logger.info(
-                "Prestige is ready..."
-            )
-            self.prestige_execute_or_schedule()
+                # Event is running, let's check the master panel for
+                # the current event icon.
+                if self.search(
+                    image=self.files["prestige_close_to_max_event_icon"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["event_icon_search_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["event_icon_search_precision"],
+                )[0]:
+                    self.close_to_max_ready = True
+            else:
+                # No event is running, instead, we will open the skill tree,
+                # and check that the reset icon is present.
+                if self.configuration["abyssal"]:
+                    self.logger.info(
+                        "Abyssal tournament is enabled, checking for prestige reset on skill tree..."
+                    )
+                else:
+                    self.logger.info(
+                        "No event is currently running, checking for prestige reset on skill tree..."
+                    )
+                self.click(
+                    point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
+                    pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
+                )
+                if self.search(
+                    image=self.files["prestige_close_to_max_skill_tree_icon"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_search_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_search_precision"],
+                )[0]:
+                    self.close_to_max_ready = True
+                # Closing the skill tree once finished.
+                # "prestige" variable will determine next steps below.
+                while self.search(
+                    image=self.files["prestige_close_to_max_skill_tree_header"],
+                    region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_header_area"],
+                    precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_header_precision"],
+                )[0]:
+                    # Looping to exit, careful since not exiting could cause us
+                    # to use a skill point, which makes it hard to leave the prompt.
+                    self.find_and_click_image(
+                        image=self.files["large_exit"],
+                        region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+                        precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+                        pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+                    )
+        if self.close_to_max_ready:
+            if self.configuration["prestige_close_to_max_fight_boss_enabled"]:
+                self.logger.info(
+                    "Prestige is ready, waiting for fight boss icon to appear..."
+                )
+                # We need to also make sure the fight boss function is no longer
+                # scheduled to run for the rest of this prestige.
+                self.cancel_scheduled_function(tags=self.fight_boss.__name__)
+                # Instead of executing or scheduling our prestige right away,
+                # we will check for the fight boss icon and if it's present,
+                # then we will execute/schedule.
+                if self.search(
+                    image=self.files["fight_boss_icon"],
+                    region=self.configurations["regions"]["fight_boss"]["search_area"],
+                    precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
+                )[0]:
+                    self.logger.info(
+                        "Fight boss icon is present, prestige is ready..."
+                    )
+                    self.prestige()
+            else:
+                self.logger.info(
+                    "Prestige is ready..."
+                )
+                self.prestige_execute_or_schedule()
 
     def tap(self):
         """
@@ -2176,34 +2469,23 @@ class Bot(object):
         self.logger.debug(
             "Attempting to collapse any panels in game..."
         )
-        timeout_collapse_cnt = 0
-        timeout_collapse_max = self.configurations["parameters"]["collapse"]["timeout_collapse"]
 
-        while True:
-            try:
-                if self.find_and_click_image(
-                    image=self.files["travel_collapse"],
-                    region=self.configurations["regions"]["travel"]["collapse_area"],
-                    precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                ):
-                    self.logger.debug(
-                        "Panel has been successfully collapsed..."
-                    )
-                timeout_collapse_cnt = self.handle_timeout(
-                    count=timeout_collapse_cnt,
-                    timeout=timeout_collapse_max,
-                )
-                # Perform a very slight sleep in between checks.
-                # Collapsing can be important and we don't want
-                # any false positives to occur.
-                time.sleep(self.configurations["parameters"]["collapse"]["collapse_loop_pause"])
-            except TimeoutError:
-                # Timeout error is used here to derive that no
-                # panel is available to be collapsed at all.
+        try:
+            if self.find_and_click_image(
+                image=self.files["travel_collapse"],
+                region=self.configurations["regions"]["travel"]["collapse_area"],
+                precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
+                pause=self.configurations["parameters"]["collapse"]["collapse_loop_pause"],
+                pause_not_found=self.configurations["parameters"]["collapse"]["collapse_loop_pause_not_found"],
+                timeout=self.configurations["parameters"]["collapse"]["timeout_collapse"],
+            ):
                 self.logger.debug(
-                    "No panels could be found to collapse..."
+                    "Panel has been successfully collapsed..."
                 )
-                break
+        except TimeoutError:
+            self.logger.debug(
+                "No panels available to collapse..."
+            )
 
     def export_data(self):
         """
@@ -2214,51 +2496,66 @@ class Bot(object):
         """
         self.travel_to_master()
 
-        # Opening up the master screen will make sure the export data
-        # function has the most up to date information.
-        self.logger.info(
-            "Opening master page to ensure exported data is up to date..."
-        )
-        self.click(
-            point=self.configurations["points"]["export_data"]["master_screen"],
-            pause=self.configurations["parameters"]["export_data"]["master_screen_pause"],
-        )
-        while not self.find_and_click_image(
-            image=self.files["large_exit"],
-            region=self.configurations["regions"]["travel"]["exit_area"],
-            precision=self.configurations["parameters"]["travel"]["exit_precision"],
-            pause=self.configurations["parameters"]["travel"]["exit_pause"],
-        ):
-            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
+        try:
+            self.logger.info(
+                "Opening master page to ensure exported data is up to date..."
+            )
+            self.click(
+                point=self.configurations["points"]["export_data"]["master_screen"],
+                pause=self.configurations["parameters"]["export_data"]["master_screen_pause"],
+                timeout=self.configurations["parameters"]["export_data"]["timeout_master_click"],
+                timeout_search_kwargs={
+                    "image": self.files["master_header"],
+                    "region": self.configurations["regions"]["export_data"]["master_header_area"],
+                    "precision": self.configurations["parameters"]["export_data"]["master_header_precision"],
+                },
+            )
+            self.find_and_click_image(
+                image=self.files["large_exit"],
+                region=self.configurations["regions"]["travel"]["exit_area"],
+                precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                pause=self.configurations["parameters"]["travel"]["exit_pause"],
+            )
+        except TimeoutError:
+            self.logger.info(
+                "Unable to open the master panel to handle data exports, timeout has been reached, "
+                "skipping data export..."
+            )
+            return
 
-        self.logger.info(
-            "Attempting to export data now..."
-        )
-        while not self.search(
-            image=self.files["options_header"],
-            region=self.configurations["regions"]["export_data"]["options_header_area"],
-            precision=self.configurations["parameters"]["export_data"]["options_header_precision"],
-        )[0]:
+        try:
+            self.logger.info(
+                "Attempting to export data now..."
+            )
             self.click(
                 point=self.configurations["points"]["export_data"]["options_icon"],
                 pause=self.configurations["parameters"]["export_data"]["options_icon_pause"],
+                timeout=self.configurations["parameters"]["export_data"]["timeout_options_click"],
+                timeout_search_kwargs={
+                    "image": self.files["options_header"],
+                    "region": self.configurations["regions"]["export_data"]["options_header_area"],
+                    "precision": self.configurations["parameters"]["export_data"]["options_header_precision"],
+                },
             )
-
-        while not self.find_and_click_image(
-            image=self.files["options_export"],
-            region=self.configurations["regions"]["export_data"]["options_export_area"],
-            precision=self.configurations["parameters"]["export_data"]["options_export_precision"],
-            pause=self.configurations["parameters"]["export_data"]["options_export_pause"],
-        ):
-            time.sleep(self.configurations["parameters"]["export_data"]["options_export_pause"])
-        while not self.find_and_click_image(
-            image=self.files["large_exit"],
-            region=self.configurations["regions"]["travel"]["exit_area"],
-            precision=self.configurations["parameters"]["travel"]["exit_precision"],
-            pause=self.configurations["parameters"]["travel"]["exit_pause"],
-        ):
-            time.sleep(self.configurations["parameters"]["travel"]["exit_pause"])
-
+            self.find_and_click_image(
+                image=self.files["options_export"],
+                region=self.configurations["regions"]["export_data"]["options_export_area"],
+                precision=self.configurations["parameters"]["export_data"]["options_export_precision"],
+                pause=self.configurations["parameters"]["export_data"]["options_export_pause"],
+                pause_not_found=self.configurations["parameters"]["export_data"]["options_export_pause_not_found"],
+                timeout=self.configurations["parameters"]["export_data"]["timeout_export_click"],
+            )
+            self.find_and_click_image(
+                image=self.files["large_exit"],
+                region=self.configurations["regions"]["travel"]["exit_area"],
+                precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                pause=self.configurations["parameters"]["travel"]["exit_pause"],
+            )
+        except TimeoutError:
+            self.logger.info(
+                "Unable to open the options panel to handle data exports, timeout has been reached, "
+                "skipping data export..."
+            )
         self.logger.info(
             "Export data has been copied to the clipboard..."
         )
@@ -2270,6 +2567,8 @@ class Bot(object):
             # Always setting our exported content on export.
             # We handle the "original" set of exported data below.
             contents = json.loads(pyperclip.paste())
+            # "playerStats" - Important user data.
+            # "artifacts" - Artifact information (useful per prestige).
             self.export_contents = {
                 "playerStats": contents["playerStats"],
                 "artifacts": contents["artifacts"],
@@ -2327,13 +2626,6 @@ class Bot(object):
                 }
             )
 
-        timeout_click_cnt = 0
-        timeout_click_max = self.configurations["parameters"]["travel"]["timeout_click"]
-        timeout_collapse_cnt = 0
-        timeout_collapse_max = self.configurations["parameters"]["travel"]["timeout_collapse"]
-        timeout_drag_cnt = 0
-        timeout_drag_max = self.configurations["parameters"]["travel"]["timeout_drag"]
-
         # Always performing a quick find and click on an open prompt
         # page exit icon (large exit).
         while True:
@@ -2346,59 +2638,43 @@ class Bot(object):
                 continue
             break
         try:
-            while not self.search(
-                image=image,
-                region=self.configurations["regions"]["travel"]["search_area"],
-                precision=self.configurations["parameters"]["travel"]["precision"],
-            )[0]:
-                self.logger.debug(
-                    "Could not find image: '%(image)s', attempting to click on tab and trying again..." % {
-                        "image": image,
-                    }
-                )
-                self.click(
-                    point=self.configurations["points"]["travel"]["tabs"][tab],
-                    pause=self.configurations["parameters"]["travel"]["click_pause"],
-                )
-                timeout_click_cnt = self.handle_timeout(
-                    count=timeout_click_cnt,
-                    timeout=timeout_click_max,
-                )
+            self.click(
+                point=self.configurations["points"]["travel"]["tabs"][tab],
+                pause=self.configurations["parameters"]["travel"]["click_pause"],
+                timeout=self.configurations["parameters"]["travel"]["timeout_click"],
+                timeout_search_kwargs={
+                    "image": image,
+                    "region": self.configurations["regions"]["travel"]["search_area"],
+                    "precision": self.configurations["parameters"]["travel"]["precision"],
+                },
+            )
 
             # Tab is open at this point. Perform the collapse, un-collapse functionality
             # before attempting to scroll to the top or bottom of a panel.
             if collapsed:
                 # We want to "collapse" the panel, check if it's already
                 # collapsed at this point.
-                while not self.search(
-                    image=self.files["travel_collapsed"],
-                    region=self.configurations["regions"]["travel"]["collapsed_area"],
-                    precision=self.configurations["parameters"]["travel"]["collapse_precision"],
-                )[0]:
-                    self.click(
-                        point=self.configurations["points"]["travel"]["collapse"],
-                        pause=self.configurations["parameters"]["travel"]["collapse_pause"],
-                    )
-                    timeout_collapse_cnt = self.handle_timeout(
-                        count=timeout_collapse_cnt,
-                        timeout=timeout_collapse_max,
-                    )
+                self.click(
+                    point=self.configurations["points"]["travel"]["collapse"],
+                    pause=self.configurations["parameters"]["travel"]["collapse_pause"],
+                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                    timeout_search_kwargs={
+                        "image": self.files["travel_collapsed"],
+                        "region": self.configurations["regions"]["travel"]["collapsed_area"],
+                        "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
+                    },
+                )
             else:
-                # We want to "uncollapse" the panel, check if it's already
-                # uncollapsed at this point.
-                while not self.search(
-                    image=self.files["travel_collapse"],
-                    region=self.configurations["regions"]["travel"]["collapse_area"],
-                    precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                )[0]:
-                    self.click(
-                        point=self.configurations["points"]["travel"]["uncollapse"],
-                        pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
-                    )
-                    timeout_collapse_cnt = self.handle_timeout(
-                        count=timeout_collapse_cnt,
-                        timeout=timeout_collapse_max,
-                    )
+                self.click(
+                    point=self.configurations["points"]["travel"]["uncollapse"],
+                    pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
+                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                    timeout_search_kwargs={
+                        "image": self.files["travel_collapse"],
+                        "region": self.configurations["regions"]["travel"]["collapse_area"],
+                        "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+                    },
+                )
 
             if scroll:
                 scroll_img = self.files.get("travel_%(tab)s_%(scroll_key)s" % {
@@ -2409,23 +2685,23 @@ class Bot(object):
                 # If a scroll image is available, we can drag and check for the image
                 # being present to determine the top or bottom state of a tab.
                 if scroll_img:
-                    while not self.search(
-                        image=scroll_img,
-                        precision=self.configurations["parameters"]["travel"]["scroll_precision"],
-                    )[0]:
-                        self.drag(
-                            start=self.configurations["points"]["travel"]["scroll"]["drag_top" if top else "drag_bottom"],
-                            end=self.configurations["points"]["travel"]["scroll"]["drag_bottom" if top else "drag_top"],
-                            pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                        )
-                        timeout_drag_cnt = self.handle_timeout(
-                            count=timeout_drag_cnt,
-                            timeout=timeout_drag_max,
-                        )
+                    self.drag(
+                        start=self.configurations["points"]["travel"]["scroll"]["drag_top" if top else "drag_bottom"],
+                        end=self.configurations["points"]["travel"]["scroll"]["drag_bottom" if top else "drag_top"],
+                        pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_drag"],
+                        timeout_search_kwargs={
+                            "image": scroll_img,
+                            "precision": self.configurations["parameters"]["travel"]["scroll_precision"],
+                        },
+                    )
                 # If no scroll image is present for the tab, we fallback to handling the
                 # top and bottom check through an image duplication check.
                 else:
+                    timeout_drag_cnt = 0
+                    timeout_drag_max = self.configurations["parameters"]["travel"]["timeout_drag"]
                     img = None
+
                     while True:
                         img, dupe = self.duplicates(
                             image=img,
@@ -2534,7 +2810,7 @@ class Bot(object):
         """
         self.travel(
             tab="artifacts",
-            image=self.files["travel_artifacts_icon"],
+            image=self.files["travel_artifacts_icon"] if not self.configuration["abyssal"] else self.files["travel_artifacts_abyssal_icon"],
             scroll=scroll,
             collapsed=collapsed,
             top=top,
@@ -2579,6 +2855,7 @@ class Bot(object):
             extra={
                 "version": self.application_version,
                 "configuration": self.configuration["configuration_name"],
+                "abyssal": self.configuration["abyssal"],
                 "window": self.window.__str__(),
             }
         )
