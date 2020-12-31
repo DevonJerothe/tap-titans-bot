@@ -310,6 +310,11 @@ class Bot(object):
             # has some specific artifacts filled out or enabled.
             upgrade_artifacts = None
 
+        # Session Data.
+        # ------------------
+        # "powerful_hero" - most powerful hero currently in game.
+        self.powerful_hero = None
+
         # Artifacts Data.
         # ------------------
         # "upgrade_artifacts" - cycled (iter) if available.
@@ -327,6 +332,7 @@ class Bot(object):
         self.logger.debug(
             "Additional Configurations: Loaded..."
         )
+        self.logger.debug("\"powerful_hero\": %s" % self.powerful_hero)
         self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
@@ -1759,6 +1765,41 @@ class Bot(object):
             drag_heroes_panel(
                 callback=level_heroes_on_screen,
             )
+        # If headgear swapping is turned on, we always check once heroes
+        # are done being levelled.
+        if self.configuration["headgear_swap_enabled"]:
+            while self.point_is_color_range(
+                point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
+                color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
+            ):
+                # Sleep slightly before checking again that the skill
+                # notification has disappeared.
+                time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
+
+            for typ in [
+                "ranged", "melee", "spell",
+            ]:
+                if self.search(
+                    image=self.files["%(typ)s_icon" % {"typ": typ}],
+                    region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
+                    precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
+                )[0]:
+                    if self.powerful_hero == typ:
+                        # Powerful hero is the same as before, we will not actually
+                        # swap any gear yet.
+                        self.logger.info(
+                            "%(typ)s hero is still the most powerful hero, skipping headgear swap..." % {
+                                "typ": typ.capitalize(),
+                            }
+                        )
+                    else:
+                        self.logger.info(
+                            "%(typ)s hero is the most powerful hero, attempting to swap headgear..." % {
+                                "typ": typ.capitalize(),
+                            }
+                        )
+                        self.powerful_hero = typ
+                        self.headgear_swap()
 
     def perks(self):
         """
@@ -1934,6 +1975,109 @@ class Bot(object):
                     }
                 )
                 continue
+
+    def headgear_swap(self):
+        """
+        Perform all headgear related swapping functionality.
+        """
+        self.travel_to_equipment(collapsed=False, scroll=False)
+        self.logger.info(
+            "Attempting to swap headgear for %(powerful)s type hero damage..." % {
+                "powerful": self.powerful_hero.capitalize(),
+            }
+        )
+
+        # Ensure the headgear panel is also open...
+        timeout_headgear_panel_click_cnt = 0
+        timeout_headgear_panel_click_max = self.configurations["parameters"]["headgear_swap"]["timeout_headgear_panel_click"]
+
+        try:
+            while not self.point_is_color_range(
+                point=self.configurations["points"]["headgear_swap"]["headgear_panel_color_check"],
+                color_range=self.configurations["colors"]["headgear_swap"]["headgear_panel_range"],
+            ):
+                self.click(
+                    point=self.configurations["points"]["headgear_swap"]["headgear_panel"],
+                    pause=self.configurations["parameters"]["headgear_swap"]["headgear_panel_pause"],
+                )
+                timeout_headgear_panel_click_cnt = self.handle_timeout(
+                    count=timeout_headgear_panel_click_cnt,
+                    timeout=timeout_headgear_panel_click_max,
+                )
+        except TimeoutError:
+            self.logger.info(
+                "Unable to open headgear panel in game, skipping..."
+            )
+            return
+
+        # At this point, the equipment panel is open,
+        # and we should be on the headgear panel, we will
+        # also perform a quick travel to scroll to the top.
+        self.travel_to_equipment(collapsed=False)
+
+        # Once we've reached the headgear panel, we need to begin
+        # looking through each possible equipment location, checking
+        # for the correct "type" damage effect.
+        for region in self.configurations["regions"]["headgear_swap"]["equipment_regions"]:
+            # We only parse and deal with locked gear.
+            if self.search(
+                image=self.files["equipment_locked"],
+                region=region,
+                precision=self.configurations["parameters"]["headgear_swap"]["equipment_locked_precision"]
+            )[0]:
+                if self.search(
+                    image=self.files["%(powerful)s_damage" % {"powerful": self.powerful_hero}],
+                    region=region,
+                    precision=self.configurations["parameters"]["headgear_swap"]["powerful_damage_precision"],
+                )[0]:
+                    # This equipment is the correct damage type.
+                    # Is it already equipped?
+                    if self.search(
+                        image=self.files["equipment_equipped"],
+                        region=region,
+                        precision=self.configurations["parameters"]["headgear_swap"]["equipment_equipped_precision"],
+                    )[0]:
+                        self.logger.info(
+                            "Headgear of type %(powerful)s is already equipped..." % {
+                                "powerful": self.powerful_hero,
+                            }
+                        )
+                    else:
+                        self.logger.info(
+                            "Equipping %(powerful)s type headgear now..." % {
+                                "powerful": self.powerful_hero,
+                            }
+                        )
+                        try:
+                            self.find_and_click_image(
+                                image=self.files["equipment_equip"],
+                                region=region,
+                                precision=self.configurations["parameters"]["headgear_swap"]["equipment_equip_precision"],
+                                pause=self.configurations["parameters"]["headgear_swap"]["equipment_equip_pause"],
+                                pause_not_found=self.configurations["parameters"]["headgear_swap"]["equipment_equip_pause_not_found"],
+                                timeout=self.configurations["parameters"]["headgear_swap"]["equipment_equip_timeout"],
+                                timeout_search_kwargs={
+                                    "image": self.files["equipment_equipped"],
+                                    "region": region,
+                                    "precision": self.configurations["parameters"]["headgear_swap"]["equipment_equipped_precision"],
+                                },
+                            )
+                            self.logger.info(
+                                "%(powerful)s headgear has been equipped..." % {
+                                    "powerful": self.powerful_hero.capitalize(),
+                                }
+                            )
+                            return
+                        except TimeoutError:
+                            self.logger.info(
+                                "Unable to equip headgear, skipping..."
+                            )
+                    return
+        self.logger.info(
+            "No locked %(powerful)s headgear could be found to be equipped..." % {
+                "powerful": self.powerful_hero,
+            }
+        )
 
     def prestige(self):
         """
@@ -2223,9 +2367,13 @@ class Bot(object):
                             "artifact": self.next_artifact_upgrade,
                         }
                     )
+        # Reset the most powerful hero, first subsequent hero levelling
+        # should handle this for us again.
+        self.powerful_hero = None
         # Update the next artifact that will be upgraded.
         # This is done regardless of upgrade state (success/fail).
         self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+        # Prestige specific variables can be reset now.
         self.close_to_max_ready = False
         self.master_levelled = False
 
