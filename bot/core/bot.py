@@ -2135,12 +2135,6 @@ class Bot(object):
                         precision=self.configurations["parameters"]["tournaments"]["join_precision"],
                         pause=self.configurations["parameters"]["tournaments"]["join_pause"],
                         timeout=self.configurations["parameters"]["tournaments"]["join_timeout"],
-                        timeout_search_while_not=False,
-                        timeout_search_kwargs={
-                            "image": self.files["tournaments_join"],
-                            "region": self.configurations["regions"]["tournaments"]["join_area"],
-                            "precision": self.configurations["parameters"]["tournaments"]["join_precision"],
-                        },
                     )
                     self.find_and_click_image(
                         image=self.files["prestige_confirm_confirm_icon"],
