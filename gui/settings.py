@@ -17,6 +17,7 @@ MENU_SEPARATOR = "---"
 # Our custom menu titles and strings can be placed here and reused
 # when we read events to determine which buttons are pressed.
 MENU_BLANK_HEADER = "Menu"
+MENU_FORCE_PRESTIGE = "Force Prestige"
 MENU_START_SESSION = "Start Session"
 MENU_STOP_SESSION = "Stop Session"
 MENU_RESUME_SESSION = "Resume Session"

@@ -7,6 +7,7 @@ from gui.settings import (
     MENU_DISABLED,
     MENU_SEPARATOR,
     MENU_BLANK_HEADER,
+    MENU_FORCE_PRESTIGE,
     MENU_START_SESSION,
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
@@ -51,6 +52,7 @@ class GUI(object):
             index="SystemDefault",
         )
 
+        self._force_prestige = False
         self._stop = False
         self._pause = False
         self._thread = None
@@ -77,6 +79,7 @@ class GUI(object):
             self.update_license()
 
         self.event_map = {
+            MENU_FORCE_PRESTIGE: self.force_prestige,
             MENU_START_SESSION: self.start_session,
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
@@ -156,6 +159,8 @@ class GUI(object):
             self.menu_entry(text=MENU_BLANK_HEADER), [
                 self.menu_entry(text=self.menu_title),
                 self.menu_entry(separator=True),
+                self.menu_entry(text=MENU_FORCE_PRESTIGE, disabled=self._thread is None or self._force_prestige is True),
+                self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_START_SESSION, disabled=self._thread is not None),
                 self.menu_entry(text=MENU_STOP_SESSION, disabled=self._thread is None),
                 self.menu_entry(separator=True),
@@ -198,9 +203,33 @@ class GUI(object):
 
     def pause_func(self):
         """
-        Return the current interval ``_pause`` value.
+        Return the current internal``_pause`` value.
         """
         return self._pause
+
+    def force_prestige_func(self, _set=False):
+        """
+        Return the current internal ``_force_prestige`` value.
+
+        Also handling a toggle reset here, whenever force prestige is set to True,
+        we also want to reset the value.
+        """
+        if _set:
+            # Allow for an optional setting parameter to handle
+            # our func "reset". This should be called once whatever
+            # function is being executed is completed.
+            self._force_prestige = False
+        return self._force_prestige
+
+    def force_prestige(self):
+        """
+        "force_prestige" event functionality.
+        """
+        if self._thread is not None:
+            self.logger.info(
+                "Forcing Prestige..."
+            )
+            self._force_prestige = True
 
     def start_session(self):
         """
@@ -221,6 +250,7 @@ class GUI(object):
                     "application_discord": self.application_discord,
                     "license_obj": self.license,
                     "session": self._session,
+                    "force_prestige_func": self.force_prestige_func,
                     "stop_func": self.stop_func,
                     "pause_func": self.pause_func,
                 },
