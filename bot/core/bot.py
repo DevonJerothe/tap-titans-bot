@@ -1607,22 +1607,12 @@ class Bot(object):
                         pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
                     )
                     if self.point_is_color_range(
-                            point=max_point,
-                            color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                        point=max_point,
+                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
                     ):
                         self.click(
                             point=max_point,
                             pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
-                        )
-                    else:
-                        # Max level option isn't available,
-                        # we'll go ahead and just try to level the skill
-                        # to max.
-                        self.click(
-                            point=point,
-                            clicks=self.configurations["parameters"]["level_skills"]["skills_max_level"],
-                            interval=self.configurations["parameters"]["level_skills"]["level_clicks_interval"],
-                            pause=self.configurations["parameters"]["level_skills"]["level_clicks_pause"],
                         )
 
     def activate_skills(self):
