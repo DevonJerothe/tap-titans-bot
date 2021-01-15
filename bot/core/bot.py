@@ -50,6 +50,7 @@ class Bot(object):
         application_discord,
         session,
         license_obj,
+        force_prestige_func,
         stop_func,
         pause_func,
     ):
@@ -70,6 +71,9 @@ class Bot(object):
         self.export_orig_contents = {}     # Store the original set of export data.
         self.export_current_contents = {}  # Most recent contents.
 
+        # force_prestige_func is used to correctly handle the ability
+        # to force a prestige to take place during a running session.
+        self.force_prestige_func = force_prestige_func
         # stop_func is used to correctly handle our threading functionality.
         # A ``bot`` is initialized through some method that invokes a new thread.
         # We require an argument that should represent a function to determine when to exit.
@@ -3055,6 +3059,10 @@ class Bot(object):
                             # we'll resume.
                             self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
                             self.pause_date = None
+                        # Check for explicit prestige force...
+                        if self.force_prestige_func():
+                            self.prestige()
+                            self.force_prestige_func(_set=True)
                         # Ensure any pending scheduled jobs are executed at the beginning
                         # of our loop, each time.
                         self.schedule.run_pending()
