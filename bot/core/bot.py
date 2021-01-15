@@ -414,6 +414,11 @@ class Bot(object):
                 "interval": self.configuration["activate_skills_interval"],
                 "reset": True,
             },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "interval": self.configuration["level_heroes_quick_interval"],
+                "reset": True,
+            },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
@@ -542,6 +547,10 @@ class Bot(object):
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "execute": self.configurations["global"]["achievements"]["achievements_on_start"],
+            },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "execute": self.configuration["level_heroes_quick_on_start"],
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
