@@ -2557,7 +2557,14 @@ class Bot(object):
         """
         Perform taps on main game screen.
         """
-        self.collapse()
+        try:
+            self.collapse()
+        except TimeoutError:
+            # Check for a timeout error directly while collapsing panels,
+            # this allows us to skip tapping if collapsing failed.
+            self.logger.info(
+                "Unable to successfully collapse panels in game, skipping tap functionality..."
+            )
         # To prevent many, many logs from appearing in relation
         # to the tapping functionality, we'll go ahead and only
         # log the swiping information if the last function wasn't
@@ -2643,21 +2650,22 @@ class Bot(object):
             "Attempting to collapse any panels in game..."
         )
 
-        try:
-            if self.find_and_click_image(
-                image=self.files["travel_collapse"],
-                region=self.configurations["regions"]["travel"]["collapse_area"],
-                precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                pause=self.configurations["parameters"]["collapse"]["collapse_loop_pause"],
-                pause_not_found=self.configurations["parameters"]["collapse"]["collapse_loop_pause_not_found"],
-                timeout=self.configurations["parameters"]["collapse"]["timeout_collapse"],
-            ):
-                self.logger.debug(
-                    "Panel has been successfully collapsed..."
-                )
-        except TimeoutError:
+        if self.find_and_click_image(
+            image=self.files["travel_collapse"],
+            region=self.configurations["regions"]["travel"]["collapse_area"],
+            precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
+            pause=self.configurations["parameters"]["collapse"]["collapse_loop_pause"],
+            pause_not_found=self.configurations["parameters"]["collapse"]["collapse_loop_pause_not_found"],
+            timeout=self.configurations["parameters"]["collapse"]["timeout_collapse"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": self.files["travel_collapse"],
+                "region": self.configurations["regions"]["travel"]["collapse_area"],
+                "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+            },
+        ):
             self.logger.debug(
-                "No panels available to collapse..."
+                "Panel has been successfully collapsed..."
             )
 
     def export_data(self):
