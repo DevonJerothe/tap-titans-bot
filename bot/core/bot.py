@@ -2687,7 +2687,7 @@ class Bot(object):
                 image=self.files["large_exit"],
                 region=self.configurations["regions"]["travel"]["exit_area"],
                 precision=self.configurations["parameters"]["travel"]["exit_precision"],
-                pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                pause=self.configurations["parameters"]["export_data"]["exit_pause"],
             )
         except TimeoutError:
             self.logger.info(
@@ -2718,12 +2718,42 @@ class Bot(object):
                 pause_not_found=self.configurations["parameters"]["export_data"]["options_export_pause_not_found"],
                 timeout=self.configurations["parameters"]["export_data"]["timeout_export_click"],
             )
+            # Ensuring that we attempt to close the options panel until the
+            # master icon is on the screen again, since the master panel is
+            # active here, this should work fine.
             self.find_and_click_image(
                 image=self.files["large_exit"],
                 region=self.configurations["regions"]["travel"]["exit_area"],
                 precision=self.configurations["parameters"]["travel"]["exit_precision"],
                 pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                timeout=self.configurations["parameters"]["export_data"]["timeout_options_exit"],
+                timeout_search_kwargs={
+                    "image": self.files["travel_master_icon"],
+                    "region": self.configurations["regions"]["travel"]["search_area"],
+                    "precision": self.configurations["parameters"]["travel"]["precision"],
+                },
             )
+            if self.search(
+                image=self.files["language_header"],
+                region=self.configurations["regions"]["export_data"]["language_header_area"],
+                precision=self.configurations["parameters"]["export_data"]["language_header_precision"],
+            )[0]:
+                self.logger.info(
+                    "Language prompt is open, attempting to close now..."
+                )
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["travel"]["exit_area"],
+                    precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                    pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["travel"]["exit_area"],
+                    precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                    pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                )
+
         except TimeoutError:
             self.logger.info(
                 "Unable to open the options panel to handle data exports, timeout has been reached, "
