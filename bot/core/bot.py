@@ -414,6 +414,11 @@ class Bot(object):
                 "interval": self.configuration["activate_skills_interval"],
                 "reset": True,
             },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "interval": self.configuration["level_heroes_quick_interval"],
+                "reset": True,
+            },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
@@ -542,6 +547,10 @@ class Bot(object):
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "execute": self.configurations["global"]["achievements"]["achievements_on_start"],
+            },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "execute": self.configuration["level_heroes_quick_on_start"],
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
@@ -1644,44 +1653,107 @@ class Bot(object):
                 pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
             )
 
+    def _level_heroes_on_screen(self):
+        """
+        Level all current heroes on the game screen.
+        """
+        # Make sure we're still on the heroes screen...
+        self.travel_to_heroes(scroll=False, collapsed=False)
+        self.logger.info(
+            "Levelling heroes on screen now..."
+        )
+
+        clicks = self.configurations["parameters"]["level_heroes"]["hero_level_clicks"] if (
+            not self.configuration["level_heroes_masteries_unlocked"]
+        ) else 1
+
+        for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
+            # Looping through possible clicks so we can check if we should level, if not, we can early
+            # break and move to the next point.
+            for i in range(clicks):
+                # Only ever actually clicking on the hero if we know for sure a "level" is available.
+                # We do this by checking the color of the point.
+                if not self.point_is_color_range(
+                    point=(
+                        point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
+                        point[1],
+                    ),
+                    color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
+                ):
+                    self.click(
+                        point=point,
+                        interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
+                        pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
+                    )
+                else:
+                    break
+        # Perform an additional sleep once levelling is totally
+        # complete, this helps avoid issues with clicks causing
+        # a hero detail sheet to pop up.
+        time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
+
+    def _check_headgear(self):
+        """
+        Check the headgear in game currently, performing a swap if one is ready to take place.
+        """
+        while self.point_is_color_range(
+            point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
+            color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
+        ):
+            # Sleep slightly before checking again that the skill
+            # notification has disappeared.
+            time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
+
+        for typ in [
+            "ranged", "melee", "spell",
+        ]:
+            if self.search(
+                image=self.files["%(typ)s_icon" % {"typ": typ}],
+                region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
+                precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
+            )[0]:
+                if self.powerful_hero == typ:
+                    # Powerful hero is the same as before, we will not actually
+                    # swap any gear yet.
+                    self.logger.info(
+                        "%(typ)s hero is still the most powerful hero, skipping headgear swap..." % {
+                            "typ": typ.capitalize(),
+                        }
+                    )
+                else:
+                    self.logger.info(
+                        "%(typ)s hero is the most powerful hero, attempting to swap headgear..." % {
+                            "typ": typ.capitalize(),
+                        }
+                    )
+                    self.powerful_hero = typ
+                    self.headgear_swap()
+
+    def level_heroes_quick(self):
+        """
+        Level the heroes in game quickly.
+        """
+        self.travel_to_heroes(collapsed=False)
+        self.logger.info(
+            "Attempting to level the heroes in game quickly..."
+        )
+
+        # Loop through the specified amount of level loops for quick
+        # levelling...
+        for i in range(self.configuration["level_heroes_quick_loops"]):
+            self.logger.info(
+                "Levelling heroes quickly..."
+            )
+            self._level_heroes_on_screen()
+        # If headgear swapping is turned on, we always check once heroes
+        # are done being levelled quickly.
+        if self.configuration["headgear_swap_enabled"]:
+            self._check_headgear()
+
     def level_heroes(self):
         """
         Level the heroes in game.
         """
-        def level_heroes_on_screen():
-            """
-            Level all current heroes on the game screen.
-            """
-            # Make sure we're still on the heroes screen...
-            self.travel_to_heroes(scroll=False, collapsed=False)
-            self.logger.info(
-                "Levelling heroes on screen now..."
-            )
-            for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
-                # Looping through possible clicks so we can check if we should level, if not, we can early
-                # break and move to the next point.
-                for i in range(clicks):
-                    # Only ever actually clicking on the hero if we know for sure a "level" is available.
-                    # We do this by checking the color of the point.
-                    if not self.point_is_color_range(
-                        point=(
-                            point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
-                            point[1],
-                        ),
-                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
-                    ):
-                        self.click(
-                            point=point,
-                            interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
-                            pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
-                        )
-                    else:
-                        break
-            # Perform an additional sleep once levelling is totally
-            # complete, this helps avoid issues with clicks causing
-            # a hero detail sheet to pop up.
-            time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
-
         def drag_heroes_panel(
             top=True,
             callback=None,
@@ -1734,10 +1806,6 @@ class Bot(object):
             "Attempting to level the heroes in game..."
         )
 
-        clicks = self.configurations["parameters"]["level_heroes"]["hero_level_clicks"] if (
-            not self.configuration["level_heroes_masteries_unlocked"]
-        ) else 1
-
         found, position, image = self.search(
             image=self.files["heroes_max_level"],
             region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
@@ -1747,7 +1815,7 @@ class Bot(object):
             self.logger.info(
                 "Max levelled hero found, levelling first set of heroes only..."
             )
-            level_heroes_on_screen()
+            self._level_heroes_on_screen()
         else:
             # Otherwise, we'll scroll and look for a max level hero,
             # or we will find a duplicate (bottom of tab) and just begin
@@ -1757,43 +1825,12 @@ class Bot(object):
                 stop_on_max=True,
             )
             drag_heroes_panel(
-                callback=level_heroes_on_screen,
+                callback=self._level_heroes_on_screen,
             )
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled.
         if self.configuration["headgear_swap_enabled"]:
-            while self.point_is_color_range(
-                point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
-                color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
-            ):
-                # Sleep slightly before checking again that the skill
-                # notification has disappeared.
-                time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
-
-            for typ in [
-                "ranged", "melee", "spell",
-            ]:
-                if self.search(
-                    image=self.files["%(typ)s_icon" % {"typ": typ}],
-                    region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
-                    precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
-                )[0]:
-                    if self.powerful_hero == typ:
-                        # Powerful hero is the same as before, we will not actually
-                        # swap any gear yet.
-                        self.logger.info(
-                            "%(typ)s hero is still the most powerful hero, skipping headgear swap..." % {
-                                "typ": typ.capitalize(),
-                            }
-                        )
-                    else:
-                        self.logger.info(
-                            "%(typ)s hero is the most powerful hero, attempting to swap headgear..." % {
-                                "typ": typ.capitalize(),
-                            }
-                        )
-                        self.powerful_hero = typ
-                        self.headgear_swap()
+            self._check_headgear()
 
     def perks(self):
         """
