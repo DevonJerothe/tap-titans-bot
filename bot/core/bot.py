@@ -1653,6 +1653,51 @@ class Bot(object):
                 pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
             )
 
+    def _level_heroes_ensure_max(self):
+        """
+        Ensure the "BUY Max" option is selected for the hero levelling process.
+        """
+        if not self.search(
+            image=self.files["heroes_level_buy_max"],
+            region=self.configurations["regions"]["level_heroes"]["buy_max_area"],
+            precision=self.configurations["parameters"]["level_heroes"]["buy_max_precision"],
+        )[0]:
+            # The buy max option isn't currently set, we'll set it and then
+            # continue...
+            self.logger.info(
+                "Heroes \"BUY Max\" option not found, attempting to set now..."
+            )
+            try:
+                self.click(
+                    point=self.configurations["points"]["level_heroes"]["buy_max"],
+                    pause=self.configurations["parameters"]["level_heroes"]["buy_max_pause"],
+                    timeout=self.configurations["parameters"]["level_heroes"]["timeout_buy_max"],
+                    timeout_search_kwargs={
+                        "image": self.files["heroes_level_buy_max_open"],
+                        "region": self.configurations["regions"]["level_heroes"]["buy_max_open_area"],
+                        "precision": self.configurations["parameters"]["level_heroes"]["buy_max_open_precision"],
+                    },
+                )
+                # At this point, we should be able to perform a simple find and click
+                # on the buy max button, we'll pause after than and then our loop should
+                # end above.
+                self.find_and_click_image(
+                    image=self.files["heroes_level_buy_max_open"],
+                    region=self.configurations["regions"]["level_heroes"]["buy_max_open_area"],
+                    precision=self.configurations["parameters"]["level_heroes"]["buy_max_open_precision"],
+                    pause=self.configurations["parameters"]["level_heroes"]["buy_max_open_pause"],
+                    timeout=self.configurations["parameters"]["level_heroes"]["timeout_buy_max_open"],
+                    timeout_search_kwargs={
+                        "image": self.files["heroes_level_buy_max"],
+                        "region": self.configurations["regions"]["level_heroes"]["buy_max_area"],
+                        "precision": self.configurations["parameters"]["level_heroes"]["buy_max_precision"],
+                    },
+                )
+            except TimeoutError:
+                self.logger.info(
+                    "Unable to set heroes levelling to \"BUY Max\", skipping..."
+                )
+
     def _level_heroes_on_screen(self):
         """
         Level all current heroes on the game screen.
@@ -1738,6 +1783,8 @@ class Bot(object):
             "Attempting to level the heroes in game quickly..."
         )
 
+        self._level_heroes_ensure_max()
+
         # Loop through the specified amount of level loops for quick
         # levelling...
         for i in range(self.configuration["level_heroes_quick_loops"]):
@@ -1805,6 +1852,8 @@ class Bot(object):
         self.logger.info(
             "Attempting to level the heroes in game..."
         )
+
+        self._level_heroes_ensure_max()
 
         found, position, image = self.search(
             image=self.files["heroes_max_level"],
