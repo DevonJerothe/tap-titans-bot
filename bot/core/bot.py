@@ -50,8 +50,10 @@ class Bot(object):
         application_discord,
         session,
         license_obj,
+        force_prestige_func,
         stop_func,
         pause_func,
+        toast_func,
     ):
         """
         Initialize a new Bot instance.
@@ -70,6 +72,9 @@ class Bot(object):
         self.export_orig_contents = {}     # Store the original set of export data.
         self.export_current_contents = {}  # Most recent contents.
 
+        # force_prestige_func is used to correctly handle the ability
+        # to force a prestige to take place during a running session.
+        self.force_prestige_func = force_prestige_func
         # stop_func is used to correctly handle our threading functionality.
         # A ``bot`` is initialized through some method that invokes a new thread.
         # We require an argument that should represent a function to determine when to exit.
@@ -79,6 +84,9 @@ class Bot(object):
         # place during runtime.
         self.pause_func = pause_func
         self.pause_date = None
+        # toast_func can be used to send messages to the gui system
+        # directly from a bot while it's running.
+        self.toast_func = toast_func
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
@@ -283,44 +291,43 @@ class Bot(object):
             self.files["travel_artifacts_icon"]: "artifacts",
         }
 
+        # Artifact Data.
+        # ------------------
+        # "upgrade_map_keys" - List of keys present in the artifact maps.
+        # "upgrade_map_key_unmapped" - The key used to find unmapped artifacts.
+        # "upgrade_map_key_ordering" - The key used to determine the order of artifacts.
+        # "mapping_enabled" - Whether or not the mapping functionality is enabled.
+        # "upgrade_map" - The map containing all artifact options from a configuration.
+        # "upgrade_artifacts" - A list of artifacts to upgrade, one at a time, during a session.
+        # "next_artifact_upgrade" - The next single artifact that will be upgraded if maps are disabled.
+        self.upgrade_map_keys = ["1", "5", "25", "max"]
+        self.upgrade_map_key_unmapped = "unmapped"
+        self.upgrade_map_key_ordering = "percentOrder"
+        self.mapping_enabled = False
+        self.upgrade_map = None
+
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
-            tiers = [
-                tier for tier, enabled in [
-                    ("s", self.configuration["artifacts_upgrade_tier_s"]),
-                    ("a", self.configuration["artifacts_upgrade_tier_a"]),
-                    ("b", self.configuration["artifacts_upgrade_tier_b"]),
-                    ("c", self.configuration["artifacts_upgrade_tier_c"]),
-                ] if enabled
-            ]
-            upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
-            if self.configuration["artifacts_upgrade_artifact"]:
-                for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
-                    if artifact not in upgrade_artifacts:
-                        upgrade_artifacts.append(artifact)
-            if self.configuration["artifacts_ignore_artifact"]:
-                for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
-                    if artifact in upgrade_artifacts:
-                        upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
-            if self.configuration["artifacts_remove_max_level"]:
-                upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
+            # We'll use the upgrade map to derive all of our upgrade paths...
+            self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
+            # Shuffled artifact settings will shuffle everything in the map,
+            # this is done regardless of maps being enabled or not.
             if self.configuration["artifacts_shuffle"]:
-                random.shuffle(upgrade_artifacts)
-        else:
-            # In case of disabled artifact base settings but a user
-            # has some specific artifacts filled out or enabled.
-            upgrade_artifacts = None
+                for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
+                    random.shuffle(self.upgrade_map[key])
+            for key in self.upgrade_map_keys:
+                if self.upgrade_map[key]:
+                    self.mapping_enabled = True
+                    break
+
+        # If mappings are not enabled, we will ensure the unmapped
+        # artifacts are setup as something we can cycle through.
+        self.upgrade_artifacts = cycle(self.upgrade_map[self.upgrade_map_key_unmapped]) if not self.mapping_enabled else None
+        self.next_artifact_upgrade = next(self.upgrade_artifacts) if not self.mapping_enabled else None
 
         # Session Data.
         # ------------------
         # "powerful_hero" - most powerful hero currently in game.
         self.powerful_hero = None
-
-        # Artifacts Data.
-        # ------------------
-        # "upgrade_artifacts" - cycled (iter) if available.
-        # "next_artifact_upgrade" - first available from "upgrade_artifacts" if available.
-        self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
-        self.next_artifact_upgrade = next(self.upgrade_artifacts) if upgrade_artifacts else None
 
         # Per Prestige Data.
         # ------------------
@@ -333,7 +340,12 @@ class Bot(object):
             "Additional Configurations: Loaded..."
         )
         self.logger.debug("\"powerful_hero\": %s" % self.powerful_hero)
-        self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
+        self.logger.debug("\"upgrade_map_keys\": %s" % self.upgrade_map_keys)
+        self.logger.debug("\"upgrade_map_key_unmapped\": %s" % self.upgrade_map_key_unmapped)
+        self.logger.debug("\"mapping_enabled\": %s" % self.mapping_enabled)
+        self.logger.debug("\"upgrade_map\": %s" % self.upgrade_map)
+        self.logger.debug("\"upgrade_map_key_ordering\": %s" % self.upgrade_map_key_ordering)
+        self.logger.debug("\"upgrade_artifacts\": %s" % self.upgrade_artifacts)
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
@@ -408,6 +420,11 @@ class Bot(object):
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "interval": self.configuration["activate_skills_interval"],
+                "reset": True,
+            },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "interval": self.configuration["level_heroes_quick_interval"],
                 "reset": True,
             },
             self.level_heroes: {
@@ -538,6 +555,10 @@ class Bot(object):
             self.achievements: {
                 "enabled": self.configurations["global"]["achievements"]["achievements_enabled"],
                 "execute": self.configurations["global"]["achievements"]["achievements_on_start"],
+            },
+            self.level_heroes_quick: {
+                "enabled": self.configuration["level_heroes_quick_enabled"],
+                "execute": self.configuration["level_heroes_quick_on_start"],
             },
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
@@ -1607,22 +1628,12 @@ class Bot(object):
                         pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
                     )
                     if self.point_is_color_range(
-                            point=max_point,
-                            color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                        point=max_point,
+                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
                     ):
                         self.click(
                             point=max_point,
                             pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
-                        )
-                    else:
-                        # Max level option isn't available,
-                        # we'll go ahead and just try to level the skill
-                        # to max.
-                        self.click(
-                            point=point,
-                            clicks=self.configurations["parameters"]["level_skills"]["skills_max_level"],
-                            interval=self.configurations["parameters"]["level_skills"]["level_clicks_interval"],
-                            pause=self.configurations["parameters"]["level_skills"]["level_clicks_pause"],
                         )
 
     def activate_skills(self):
@@ -1650,44 +1661,154 @@ class Bot(object):
                 pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
             )
 
+    def _level_heroes_ensure_max(self):
+        """
+        Ensure the "BUY Max" option is selected for the hero levelling process.
+        """
+        if not self.search(
+            image=self.files["heroes_level_buy_max"],
+            region=self.configurations["regions"]["level_heroes"]["buy_max_area"],
+            precision=self.configurations["parameters"]["level_heroes"]["buy_max_precision"],
+        )[0]:
+            # The buy max option isn't currently set, we'll set it and then
+            # continue...
+            self.logger.info(
+                "Heroes \"BUY Max\" option not found, attempting to set now..."
+            )
+            try:
+                self.click(
+                    point=self.configurations["points"]["level_heroes"]["buy_max"],
+                    pause=self.configurations["parameters"]["level_heroes"]["buy_max_pause"],
+                    timeout=self.configurations["parameters"]["level_heroes"]["timeout_buy_max"],
+                    timeout_search_kwargs={
+                        "image": self.files["heroes_level_buy_max_open"],
+                        "region": self.configurations["regions"]["level_heroes"]["buy_max_open_area"],
+                        "precision": self.configurations["parameters"]["level_heroes"]["buy_max_open_precision"],
+                    },
+                )
+                # At this point, we should be able to perform a simple find and click
+                # on the buy max button, we'll pause after than and then our loop should
+                # end above.
+                self.find_and_click_image(
+                    image=self.files["heroes_level_buy_max_open"],
+                    region=self.configurations["regions"]["level_heroes"]["buy_max_open_area"],
+                    precision=self.configurations["parameters"]["level_heroes"]["buy_max_open_precision"],
+                    pause=self.configurations["parameters"]["level_heroes"]["buy_max_open_pause"],
+                    timeout=self.configurations["parameters"]["level_heroes"]["timeout_buy_max_open"],
+                    timeout_search_kwargs={
+                        "image": self.files["heroes_level_buy_max"],
+                        "region": self.configurations["regions"]["level_heroes"]["buy_max_area"],
+                        "precision": self.configurations["parameters"]["level_heroes"]["buy_max_precision"],
+                    },
+                )
+            except TimeoutError:
+                self.logger.info(
+                    "Unable to set heroes levelling to \"BUY Max\", skipping..."
+                )
+
+    def _level_heroes_on_screen(self):
+        """
+        Level all current heroes on the game screen.
+        """
+        # Make sure we're still on the heroes screen...
+        self.travel_to_heroes(scroll=False, collapsed=False)
+        self.logger.info(
+            "Levelling heroes on screen now..."
+        )
+
+        clicks = self.configurations["parameters"]["level_heroes"]["hero_level_clicks"] if (
+            not self.configuration["level_heroes_masteries_unlocked"]
+        ) else 1
+
+        for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
+            # Looping through possible clicks so we can check if we should level, if not, we can early
+            # break and move to the next point.
+            for i in range(clicks):
+                # Only ever actually clicking on the hero if we know for sure a "level" is available.
+                # We do this by checking the color of the point.
+                if not self.point_is_color_range(
+                    point=(
+                        point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
+                        point[1],
+                    ),
+                    color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
+                ):
+                    self.click(
+                        point=point,
+                        interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
+                        pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
+                    )
+                else:
+                    break
+        # Perform an additional sleep once levelling is totally
+        # complete, this helps avoid issues with clicks causing
+        # a hero detail sheet to pop up.
+        time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
+
+    def _check_headgear(self):
+        """
+        Check the headgear in game currently, performing a swap if one is ready to take place.
+        """
+        while self.point_is_color_range(
+            point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
+            color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
+        ):
+            # Sleep slightly before checking again that the skill
+            # notification has disappeared.
+            time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
+
+        for typ in [
+            "ranged", "melee", "spell",
+        ]:
+            if self.search(
+                image=self.files["%(typ)s_icon" % {"typ": typ}],
+                region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
+                precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
+            )[0]:
+                if self.powerful_hero == typ:
+                    # Powerful hero is the same as before, we will not actually
+                    # swap any gear yet.
+                    self.logger.info(
+                        "%(typ)s hero is still the most powerful hero, skipping headgear swap..." % {
+                            "typ": typ.capitalize(),
+                        }
+                    )
+                else:
+                    self.logger.info(
+                        "%(typ)s hero is the most powerful hero, attempting to swap headgear..." % {
+                            "typ": typ.capitalize(),
+                        }
+                    )
+                    self.powerful_hero = typ
+                    self.headgear_swap()
+
+    def level_heroes_quick(self):
+        """
+        Level the heroes in game quickly.
+        """
+        self.travel_to_heroes(collapsed=False)
+        self.logger.info(
+            "Attempting to level the heroes in game quickly..."
+        )
+
+        self._level_heroes_ensure_max()
+
+        # Loop through the specified amount of level loops for quick
+        # levelling...
+        for i in range(self.configuration["level_heroes_quick_loops"]):
+            self.logger.info(
+                "Levelling heroes quickly..."
+            )
+            self._level_heroes_on_screen()
+        # If headgear swapping is turned on, we always check once heroes
+        # are done being levelled quickly.
+        if self.configuration["headgear_swap_enabled"]:
+            self._check_headgear()
+
     def level_heroes(self):
         """
         Level the heroes in game.
         """
-        def level_heroes_on_screen():
-            """
-            Level all current heroes on the game screen.
-            """
-            # Make sure we're still on the heroes screen...
-            self.travel_to_heroes(scroll=False, collapsed=False)
-            self.logger.info(
-                "Levelling heroes on screen now..."
-            )
-            for point in self.configurations["points"]["level_heroes"]["possible_hero_level_points"]:
-                # Looping through possible clicks so we can check if we should level, if not, we can early
-                # break and move to the next point.
-                for i in range(clicks):
-                    # Only ever actually clicking on the hero if we know for sure a "level" is available.
-                    # We do this by checking the color of the point.
-                    if not self.point_is_color_range(
-                        point=(
-                            point[0] + self.configurations["parameters"]["level_heroes"]["check_possible_point_x_padding"],
-                            point[1],
-                        ),
-                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_click_range"],
-                    ):
-                        self.click(
-                            point=point,
-                            interval=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_interval"],
-                            pause=self.configurations["parameters"]["level_heroes"]["hero_level_clicks_pause"],
-                        )
-                    else:
-                        break
-            # Perform an additional sleep once levelling is totally
-            # complete, this helps avoid issues with clicks causing
-            # a hero detail sheet to pop up.
-            time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
-
         def drag_heroes_panel(
             top=True,
             callback=None,
@@ -1740,9 +1861,7 @@ class Bot(object):
             "Attempting to level the heroes in game..."
         )
 
-        clicks = self.configurations["parameters"]["level_heroes"]["hero_level_clicks"] if (
-            not self.configuration["level_heroes_masteries_unlocked"]
-        ) else 1
+        self._level_heroes_ensure_max()
 
         found, position, image = self.search(
             image=self.files["heroes_max_level"],
@@ -1753,7 +1872,7 @@ class Bot(object):
             self.logger.info(
                 "Max levelled hero found, levelling first set of heroes only..."
             )
-            level_heroes_on_screen()
+            self._level_heroes_on_screen()
         else:
             # Otherwise, we'll scroll and look for a max level hero,
             # or we will find a duplicate (bottom of tab) and just begin
@@ -1763,43 +1882,12 @@ class Bot(object):
                 stop_on_max=True,
             )
             drag_heroes_panel(
-                callback=level_heroes_on_screen,
+                callback=self._level_heroes_on_screen,
             )
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled.
         if self.configuration["headgear_swap_enabled"]:
-            while self.point_is_color_range(
-                point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
-                color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
-            ):
-                # Sleep slightly before checking again that the skill
-                # notification has disappeared.
-                time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
-
-            for typ in [
-                "ranged", "melee", "spell",
-            ]:
-                if self.search(
-                    image=self.files["%(typ)s_icon" % {"typ": typ}],
-                    region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
-                    precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
-                )[0]:
-                    if self.powerful_hero == typ:
-                        # Powerful hero is the same as before, we will not actually
-                        # swap any gear yet.
-                        self.logger.info(
-                            "%(typ)s hero is still the most powerful hero, skipping headgear swap..." % {
-                                "typ": typ.capitalize(),
-                            }
-                        )
-                    else:
-                        self.logger.info(
-                            "%(typ)s hero is the most powerful hero, attempting to swap headgear..." % {
-                                "typ": typ.capitalize(),
-                            }
-                        )
-                        self.powerful_hero = typ
-                        self.headgear_swap()
+            self._check_headgear()
 
     def perks(self):
         """
@@ -1983,7 +2071,7 @@ class Bot(object):
         self.travel_to_equipment(collapsed=False, scroll=False)
         self.logger.info(
             "Attempting to swap headgear for %(powerful)s type hero damage..." % {
-                "powerful": self.powerful_hero.capitalize(),
+                "powerful": self.powerful_hero,
             }
         )
 
@@ -2077,6 +2165,84 @@ class Bot(object):
             "No locked %(powerful)s headgear could be found to be equipped..." % {
                 "powerful": self.powerful_hero,
             }
+        )
+
+    def _artifacts_ensure_multiplier(self, multiplier):
+        """
+        Ensure the artifacts tab is set to the specified multiplier.
+        """
+        self.logger.info(
+            "Ensuring %(multiplier)s is active..." % {
+                "multiplier": multiplier,
+            }
+        )
+        self.click(
+            point=self.configurations["points"]["artifacts"]["multiplier"],
+            pause=self.configurations["parameters"]["artifacts"]["multiplier_pause"],
+            timeout=self.configurations["parameters"]["artifacts"]["timeout_multiplier"],
+            timeout_search_kwargs={
+                "image": self.files["artifacts_%s" % multiplier],
+                "region": self.configurations["regions"]["artifacts"]["%s_open_area" % multiplier],
+                "precision": self.configurations["parameters"]["artifacts"]["multiplier_open_precision"],
+            },
+        )
+        # At this point, we should be able to perform a simple find and click
+        # on the buy max button, we'll pause after than and then our loop should
+        # end above.
+        self.find_and_click_image(
+            image=self.files["artifacts_%s" % multiplier],
+            region=self.configurations["regions"]["artifacts"]["%s_open_area" % multiplier],
+            precision=self.configurations["parameters"]["artifacts"]["multiplier_open_precision"],
+            pause=self.configurations["parameters"]["artifacts"]["multiplier_open_pause"],
+            timeout=self.configurations["parameters"]["artifacts"]["timeout_multiplier_open"],
+        )
+
+    def _artifacts_upgrade(self, artifact, multiplier):
+        """
+        Search for an actually perform an upgrade on it in the artifacts panel.
+        """
+        # Upgrade a single artifact to it's maximum
+        # one time...
+        self.logger.info(
+            "Attempting to upgrade %(artifact)s artifact..." % {
+                "artifact": artifact,
+            }
+        )
+        timeout_artifact_search_cnt = 0
+        timeout_artifact_search_max = self.configurations["parameters"]["artifacts"]["timeout_search"]
+
+        while not self.search(
+            image=self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+            region=self.configurations["regions"]["artifacts"]["search_area"],
+            precision=self.configurations["parameters"]["artifacts"]["search_precision"],
+        )[0]:
+            self.drag(
+                start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                pause=self.configurations["parameters"]["travel"]["drag_pause"],
+            )
+            timeout_artifact_search_cnt = self.handle_timeout(
+                count=timeout_artifact_search_cnt,
+                timeout=timeout_artifact_search_max,
+            )
+        # At this point, the artifact being upgraded should be visible on the screen,
+        # we'll grab the position and perform a single upgrade click before continuing.
+        _, position, image = self.search(
+            image=self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+            region=self.configurations["regions"]["artifacts"]["search_area"],
+            precision=self.configurations["parameters"]["artifacts"]["search_precision"],
+        )
+        # Dynamically calculate the location of the upgrade button
+        # and perform a click.
+        point = (
+            position[0] + self.configurations["parameters"]["artifacts"]["position_x_padding"],
+            position[1] + self.configurations["parameters"]["artifacts"]["position_y_padding"],
+        )
+        self.click(
+            point=point,
+            clicks=self.configurations["parameters"]["artifacts"]["upgrade_clicks"] if multiplier == "max" else 1,
+            interval=self.configurations["parameters"]["artifacts"]["upgrade_interval"],
+            pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
         )
 
     def prestige(self):
@@ -2314,53 +2480,96 @@ class Bot(object):
                         else:
                             break
             if self.configuration["artifacts_upgrade_enabled"]:
-                self.logger.info(
-                    "Attempting to upgrade %(artifact)s artifact..." % {
-                        "artifact": self.next_artifact_upgrade,
-                    }
-                )
-                timeout_artifact_search_cnt = 0
-                timeout_artifact_search_max = self.configurations["parameters"]["artifacts"]["timeout_search"]
-                try:
-                    while not self.search(
-                        image=self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                        region=self.configurations["regions"]["artifacts"]["search_area"],
-                        precision=self.configurations["parameters"]["artifacts"]["search_precision"],
-                    )[0]:
-                        self.drag(
-                            start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
-                            end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
-                            pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                        )
-                        timeout_artifact_search_cnt = self.handle_timeout(
-                            count=timeout_artifact_search_cnt,
-                            timeout=timeout_artifact_search_max,
-                        )
-                    # At this point, the artifact being upgraded should be visible on the screen,
-                    # we'll grab the position and perform a single upgrade click before continuing.
-                    _, position, image = self.search(
-                        image=self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                        region=self.configurations["regions"]["artifacts"]["search_area"],
-                        precision=self.configurations["parameters"]["artifacts"]["search_precision"],
-                    )
-                    # Dynamically calculate the location of the upgrade button
-                    # and perform a click.
-                    point = (
-                        position[0] + self.configurations["parameters"]["artifacts"]["position_x_padding"],
-                        position[1] + self.configurations["parameters"]["artifacts"]["position_y_padding"],
-                    )
-                    self.click(
-                        point=point,
-                        clicks=self.configurations["parameters"]["artifacts"]["upgrade_clicks"],
-                        interval=self.configurations["parameters"]["artifacts"]["upgrade_interval"],
-                        pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
-                    )
-                except TimeoutError:
+                # Determining if maps are even going to be used
+                # for this artifact upgrade functionality.
+                if not self.mapping_enabled:
                     self.logger.info(
-                        "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
-                            "artifact": self.next_artifact_upgrade,
-                        }
+                        "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
+                        "the \"BUY Max\" multiplier once."
                     )
+                    try:
+                        self._artifacts_ensure_multiplier(
+                            multiplier="max",
+                        )
+                        # Upgrade a single artifact to it's maximum
+                        # one time...
+                        self._artifacts_upgrade(
+                            artifact=self.next_artifact_upgrade,
+                            multiplier="max",
+                        )
+                        # Update the next artifact that will be upgraded.
+                        # This is done regardless of upgrade state (success/fail).
+                        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+                        # Exporting our prestige once it's finished and right before
+                        # exporting session data (if enabled).
+                        self.export_prestige(prestige_contents={
+                            "upgradeArtifact": self.next_artifact_upgrade,
+                        })
+                    except TimeoutError:
+                        self.logger.info(
+                            "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
+                            "skipping upgrade..." % {
+                                "artifact": self.next_artifact_upgrade,
+                            }
+                        )
+                        self.export_prestige(prestige_contents={
+                            "upgradeArtifact": None,
+                        })
+                else:
+                    upgraded_artifacts = []
+                    # Mappings are enabled... We'll begin all that functionality here.
+                    # We know maps are available, so we'll loop through all of our keys and
+                    # and handle the multiplier ordering as needed.
+                    for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
+                        multiplier = str(multiplier)
+                        self.logger.info(
+                            "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
+                                "multiplier": multiplier,
+                            }
+                        )
+                        if self.upgrade_map[multiplier]:
+                            try:
+                                self._artifacts_ensure_multiplier(
+                                    multiplier=multiplier,
+                                )
+                                for artifact in self.upgrade_map[multiplier]:
+                                    try:
+                                        self.travel_to_artifacts(
+                                            collapsed=False,
+                                            stop_image_kwargs={
+                                                "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+                                                "region": self.configurations["regions"]["artifacts"]["search_area"],
+                                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                                            },
+                                        )
+                                        self._artifacts_upgrade(
+                                            artifact=artifact,
+                                            multiplier=multiplier,
+                                        )
+                                        upgraded_artifacts.append(
+                                            artifact,
+                                        )
+                                    except TimeoutError:
+                                        self.logger.info(
+                                            "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
+                                                "artifact": artifact,
+                                            }
+                                        )
+                            except TimeoutError:
+                                self.logger.info(
+                                    "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
+                                        "multiplier": multiplier,
+                                    }
+                                )
+                        else:
+                            self.logger.info(
+                                "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
+                                    "multiplier": multiplier,
+                                }
+                            )
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": upgraded_artifacts,
+                    })
         # Reset the most powerful hero, first subsequent hero levelling
         # should handle this for us again.
         self.powerful_hero = None
@@ -2370,13 +2579,6 @@ class Bot(object):
         # Prestige specific variables can be reset now.
         self.close_to_max_ready = False
         self.master_levelled = False
-
-        # Exporting our prestige once it's finished and right before
-        # exporting session data (if enabled).
-        self.export_prestige(prestige_contents={
-            "upgradeArtifact": self.next_artifact_upgrade,
-        })
-
         # Once the prestige has finished, we need to update our most upto date
         # set of exported data, from here, we can then figure out whats changed
         # and send a new session event. If this isn't enabled, we at least get
@@ -2526,7 +2728,14 @@ class Bot(object):
         """
         Perform taps on main game screen.
         """
-        self.collapse()
+        try:
+            self.collapse()
+        except TimeoutError:
+            # Check for a timeout error directly while collapsing panels,
+            # this allows us to skip tapping if collapsing failed.
+            self.logger.info(
+                "Unable to successfully collapse panels in game, skipping tap functionality..."
+            )
         # To prevent many, many logs from appearing in relation
         # to the tapping functionality, we'll go ahead and only
         # log the swiping information if the last function wasn't
@@ -2612,21 +2821,22 @@ class Bot(object):
             "Attempting to collapse any panels in game..."
         )
 
-        try:
-            if self.find_and_click_image(
-                image=self.files["travel_collapse"],
-                region=self.configurations["regions"]["travel"]["collapse_area"],
-                precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                pause=self.configurations["parameters"]["collapse"]["collapse_loop_pause"],
-                pause_not_found=self.configurations["parameters"]["collapse"]["collapse_loop_pause_not_found"],
-                timeout=self.configurations["parameters"]["collapse"]["timeout_collapse"],
-            ):
-                self.logger.debug(
-                    "Panel has been successfully collapsed..."
-                )
-        except TimeoutError:
+        if self.find_and_click_image(
+            image=self.files["travel_collapse"],
+            region=self.configurations["regions"]["travel"]["collapse_area"],
+            precision=self.configurations["parameters"]["travel"]["uncollapse_precision"],
+            pause=self.configurations["parameters"]["collapse"]["collapse_loop_pause"],
+            pause_not_found=self.configurations["parameters"]["collapse"]["collapse_loop_pause_not_found"],
+            timeout=self.configurations["parameters"]["collapse"]["timeout_collapse"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": self.files["travel_collapse"],
+                "region": self.configurations["regions"]["travel"]["collapse_area"],
+                "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+            },
+        ):
             self.logger.debug(
-                "No panels available to collapse..."
+                "Panel has been successfully collapsed..."
             )
 
     def export_data(self):
@@ -2656,7 +2866,7 @@ class Bot(object):
                 image=self.files["large_exit"],
                 region=self.configurations["regions"]["travel"]["exit_area"],
                 precision=self.configurations["parameters"]["travel"]["exit_precision"],
-                pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                pause=self.configurations["parameters"]["export_data"]["exit_pause"],
             )
         except TimeoutError:
             self.logger.info(
@@ -2687,12 +2897,42 @@ class Bot(object):
                 pause_not_found=self.configurations["parameters"]["export_data"]["options_export_pause_not_found"],
                 timeout=self.configurations["parameters"]["export_data"]["timeout_export_click"],
             )
+            # Ensuring that we attempt to close the options panel until the
+            # master icon is on the screen again, since the master panel is
+            # active here, this should work fine.
             self.find_and_click_image(
                 image=self.files["large_exit"],
                 region=self.configurations["regions"]["travel"]["exit_area"],
                 precision=self.configurations["parameters"]["travel"]["exit_precision"],
                 pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                timeout=self.configurations["parameters"]["export_data"]["timeout_options_exit"],
+                timeout_search_kwargs={
+                    "image": self.files["travel_master_icon"],
+                    "region": self.configurations["regions"]["travel"]["search_area"],
+                    "precision": self.configurations["parameters"]["travel"]["precision"],
+                },
             )
+            if self.search(
+                image=self.files["language_header"],
+                region=self.configurations["regions"]["export_data"]["language_header_area"],
+                precision=self.configurations["parameters"]["export_data"]["language_header_precision"],
+            )[0]:
+                self.logger.info(
+                    "Language prompt is open, attempting to close now..."
+                )
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["travel"]["exit_area"],
+                    precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                    pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                )
+                self.find_and_click_image(
+                    image=self.files["large_exit"],
+                    region=self.configurations["regions"]["travel"]["exit_area"],
+                    precision=self.configurations["parameters"]["travel"]["exit_precision"],
+                    pause=self.configurations["parameters"]["travel"]["exit_pause"],
+                )
+
         except TimeoutError:
             self.logger.info(
                 "Unable to open the options panel to handle data exports, timeout has been reached, "
@@ -2743,6 +2983,7 @@ class Bot(object):
         scroll=True,
         collapsed=True,
         top=True,
+        stop_image_kwargs=None,
     ):
         """
         Travel to the specified tab in game.
@@ -2845,6 +3086,13 @@ class Bot(object):
                     img = None
 
                     while True:
+                        if stop_image_kwargs:
+                            # Breaking early if image stopping is enabled
+                            # and the image kwargs are found on the screen.
+                            if self.search(
+                                **stop_image_kwargs
+                            )[0]:
+                                break
                         img, dupe = self.duplicates(
                             image=img,
                             region=self.configurations["regions"]["travel"]["duplicate_area"],
@@ -2946,6 +3194,7 @@ class Bot(object):
         scroll=True,
         collapsed=True,
         top=True,
+        stop_image_kwargs=None,
     ):
         """
         Travel to the artifacts tab in game.
@@ -2956,6 +3205,7 @@ class Bot(object):
             scroll=scroll,
             collapsed=collapsed,
             top=top,
+            stop_image_kwargs=stop_image_kwargs,
         )
 
     def travel_to_main_screen(self):
@@ -3033,6 +3283,10 @@ class Bot(object):
             "expiration": self.license.expiration,
         })
         self.logger.info("===================================================================================")
+        self.toast_func(
+            title="Session",
+            message="Session Initialized Successfully..."
+        )
 
         try:
             self.configure_additional()
@@ -3065,6 +3319,10 @@ class Bot(object):
                             # we'll resume.
                             self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
                             self.pause_date = None
+                        # Check for explicit prestige force...
+                        if self.force_prestige_func():
+                            self.prestige()
+                            self.force_prestige_func(_set=True)
                         # Ensure any pending scheduled jobs are executed at the beginning
                         # of our loop, each time.
                         self.schedule.run_pending()
@@ -3073,6 +3331,11 @@ class Bot(object):
                     # case, we'll pass here but the next iteration should catch that and
                     # we wont keep running until resumed (or stopped).
                     pass
+            self.toast_func(
+                title="Session",
+                message="Session Stopped Successfully...",
+                duration=5,
+            )
 
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -3081,32 +3344,60 @@ class Bot(object):
             self.logger.info(
                 "A game state exception was encountered, ending session now..."
             )
+            self.toast_func(
+                title="Game State Exception",
+                message="Game State Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except FailSafeException:
             self.logger.info(
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
                 "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
             )
+            self.toast_func(
+                title="Failsafe Exception",
+                message="Failsafe Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except ExportContentsException:
             self.logger.info(
                 "An error occurred while attempting to export data from the game."
             )
+            self.toast_func(
+                title="Export Contents Exception",
+                message="Export Contents Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except KeyError as err:
             self.logger.info(
-                "It looks like a required configuration key (%(key)s) is either malformed or missing... "
-                "Please contact support or make sure to visit the discord to determine if any server maintenance "
-                "is actively being performed." % {
+                "It looks like a required configuration key \"%(key)s\" is either malformed or missing... Please contact support "
+                "or make sure to visit the discord to determine if any server maintenance is actively being performed." % {
                     "key": err,
                 }
+            )
+            self.toast_func(
+                title="Missing Key",
+                message="KeyError Encountered, Ending Session Now...",
+                duration=7,
             )
         except LicenseAuthenticationError:
             self.logger.info(
                 "An authentication error has occurred. Ending session now..."
             )
+            self.toast_func(
+                title="License Authentication Error",
+                message="Authentication Error Encountered. Ending Session Now...",
+                duration=7
+            )
         except StoppedException:
             # Pass when stopped exception is encountered, skip right to our
             # finally block to handle logging and cleanup.
-            pass
+            self.toast_func(
+                title="Session",
+                message="Session Stopped Successfully...",
+                duration=5,
+            )
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
