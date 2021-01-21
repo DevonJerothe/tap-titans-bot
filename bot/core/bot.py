@@ -287,44 +287,43 @@ class Bot(object):
             self.files["travel_artifacts_icon"]: "artifacts",
         }
 
+        # Artifact Data.
+        # ------------------
+        # "upgrade_map_keys" - List of keys present in the artifact maps.
+        # "upgrade_map_key_unmapped" - The key used to find unmapped artifacts.
+        # "upgrade_map_key_ordering" - The key used to determine the order of artifacts.
+        # "mapping_enabled" - Whether or not the mapping functionality is enabled.
+        # "upgrade_map" - The map containing all artifact options from a configuration.
+        # "upgrade_artifacts" - A list of artifacts to upgrade, one at a time, during a session.
+        # "next_artifact_upgrade" - The next single artifact that will be upgraded if maps are disabled.
+        self.upgrade_map_keys = ["1", "5", "25", "max"]
+        self.upgrade_map_key_unmapped = "unmapped"
+        self.upgrade_map_key_ordering = "percentOrder"
+        self.mapping_enabled = False
+        self.upgrade_map = None
+
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
-            tiers = [
-                tier for tier, enabled in [
-                    ("s", self.configuration["artifacts_upgrade_tier_s"]),
-                    ("a", self.configuration["artifacts_upgrade_tier_a"]),
-                    ("b", self.configuration["artifacts_upgrade_tier_b"]),
-                    ("c", self.configuration["artifacts_upgrade_tier_c"]),
-                ] if enabled
-            ]
-            upgrade_artifacts = [art for key, val in self.configurations["artifacts"].items() for art in val if key in tiers]
-            if self.configuration["artifacts_upgrade_artifact"]:
-                for artifact in self.configuration["artifacts_upgrade_artifact"].split(","):
-                    if artifact not in upgrade_artifacts:
-                        upgrade_artifacts.append(artifact)
-            if self.configuration["artifacts_ignore_artifact"]:
-                for artifact in self.configuration["artifacts_ignore_artifact"].split(","):
-                    if artifact in upgrade_artifacts:
-                        upgrade_artifacts.pop(upgrade_artifacts.index(artifact))
-            if self.configuration["artifacts_remove_max_level"]:
-                upgrade_artifacts = [art for art in upgrade_artifacts if art not in self.configurations["artifacts_max"]]
+            # We'll use the upgrade map to derive all of our upgrade paths...
+            self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
+            # Shuffled artifact settings will shuffle everything in the map,
+            # this is done regardless of maps being enabled or not.
             if self.configuration["artifacts_shuffle"]:
-                random.shuffle(upgrade_artifacts)
-        else:
-            # In case of disabled artifact base settings but a user
-            # has some specific artifacts filled out or enabled.
-            upgrade_artifacts = None
+                for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
+                    random.shuffle(self.upgrade_map[key])
+            for key in self.upgrade_map_keys:
+                if self.upgrade_map[key]:
+                    self.mapping_enabled = True
+                    break
+
+        # If mappings are not enabled, we will ensure the unmapped
+        # artifacts are setup as something we can cycle through.
+        self.upgrade_artifacts = cycle(self.upgrade_map[self.upgrade_map_key_unmapped]) if not self.mapping_enabled else None
+        self.next_artifact_upgrade = next(self.upgrade_artifacts) if not self.mapping_enabled else None
 
         # Session Data.
         # ------------------
         # "powerful_hero" - most powerful hero currently in game.
         self.powerful_hero = None
-
-        # Artifacts Data.
-        # ------------------
-        # "upgrade_artifacts" - cycled (iter) if available.
-        # "next_artifact_upgrade" - first available from "upgrade_artifacts" if available.
-        self.upgrade_artifacts = cycle(upgrade_artifacts) if upgrade_artifacts else None
-        self.next_artifact_upgrade = next(self.upgrade_artifacts) if upgrade_artifacts else None
 
         # Per Prestige Data.
         # ------------------
@@ -337,7 +336,12 @@ class Bot(object):
             "Additional Configurations: Loaded..."
         )
         self.logger.debug("\"powerful_hero\": %s" % self.powerful_hero)
-        self.logger.debug("\"upgrade_artifacts\": %s" % upgrade_artifacts)
+        self.logger.debug("\"upgrade_map_keys\": %s" % self.upgrade_map_keys)
+        self.logger.debug("\"upgrade_map_key_unmapped\": %s" % self.upgrade_map_key_unmapped)
+        self.logger.debug("\"mapping_enabled\": %s" % self.mapping_enabled)
+        self.logger.debug("\"upgrade_map\": %s" % self.upgrade_map)
+        self.logger.debug("\"upgrade_map_key_ordering\": %s" % self.upgrade_map_key_ordering)
+        self.logger.debug("\"upgrade_artifacts\": %s" % self.upgrade_artifacts)
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
@@ -2063,7 +2067,7 @@ class Bot(object):
         self.travel_to_equipment(collapsed=False, scroll=False)
         self.logger.info(
             "Attempting to swap headgear for %(powerful)s type hero damage..." % {
-                "powerful": self.powerful_hero.capitalize(),
+                "powerful": self.powerful_hero,
             }
         )
 
@@ -2157,6 +2161,84 @@ class Bot(object):
             "No locked %(powerful)s headgear could be found to be equipped..." % {
                 "powerful": self.powerful_hero,
             }
+        )
+
+    def _artifacts_ensure_multiplier(self, multiplier):
+        """
+        Ensure the artifacts tab is set to the specified multiplier.
+        """
+        self.logger.info(
+            "Ensuring %(multiplier)s is active..." % {
+                "multiplier": multiplier,
+            }
+        )
+        self.click(
+            point=self.configurations["points"]["artifacts"]["multiplier"],
+            pause=self.configurations["parameters"]["artifacts"]["multiplier_pause"],
+            timeout=self.configurations["parameters"]["artifacts"]["timeout_multiplier"],
+            timeout_search_kwargs={
+                "image": self.files["artifacts_%s" % multiplier],
+                "region": self.configurations["regions"]["artifacts"]["%s_open_area" % multiplier],
+                "precision": self.configurations["parameters"]["artifacts"]["multiplier_open_precision"],
+            },
+        )
+        # At this point, we should be able to perform a simple find and click
+        # on the buy max button, we'll pause after than and then our loop should
+        # end above.
+        self.find_and_click_image(
+            image=self.files["artifacts_%s" % multiplier],
+            region=self.configurations["regions"]["artifacts"]["%s_open_area" % multiplier],
+            precision=self.configurations["parameters"]["artifacts"]["multiplier_open_precision"],
+            pause=self.configurations["parameters"]["artifacts"]["multiplier_open_pause"],
+            timeout=self.configurations["parameters"]["artifacts"]["timeout_multiplier_open"],
+        )
+
+    def _artifacts_upgrade(self, artifact, multiplier):
+        """
+        Search for an actually perform an upgrade on it in the artifacts panel.
+        """
+        # Upgrade a single artifact to it's maximum
+        # one time...
+        self.logger.info(
+            "Attempting to upgrade %(artifact)s artifact..." % {
+                "artifact": artifact,
+            }
+        )
+        timeout_artifact_search_cnt = 0
+        timeout_artifact_search_max = self.configurations["parameters"]["artifacts"]["timeout_search"]
+
+        while not self.search(
+            image=self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+            region=self.configurations["regions"]["artifacts"]["search_area"],
+            precision=self.configurations["parameters"]["artifacts"]["search_precision"],
+        )[0]:
+            self.drag(
+                start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                pause=self.configurations["parameters"]["travel"]["drag_pause"],
+            )
+            timeout_artifact_search_cnt = self.handle_timeout(
+                count=timeout_artifact_search_cnt,
+                timeout=timeout_artifact_search_max,
+            )
+        # At this point, the artifact being upgraded should be visible on the screen,
+        # we'll grab the position and perform a single upgrade click before continuing.
+        _, position, image = self.search(
+            image=self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+            region=self.configurations["regions"]["artifacts"]["search_area"],
+            precision=self.configurations["parameters"]["artifacts"]["search_precision"],
+        )
+        # Dynamically calculate the location of the upgrade button
+        # and perform a click.
+        point = (
+            position[0] + self.configurations["parameters"]["artifacts"]["position_x_padding"],
+            position[1] + self.configurations["parameters"]["artifacts"]["position_y_padding"],
+        )
+        self.click(
+            point=point,
+            clicks=self.configurations["parameters"]["artifacts"]["upgrade_clicks"] if multiplier == "max" else 1,
+            interval=self.configurations["parameters"]["artifacts"]["upgrade_interval"],
+            pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
         )
 
     def prestige(self):
@@ -2394,53 +2476,96 @@ class Bot(object):
                         else:
                             break
             if self.configuration["artifacts_upgrade_enabled"]:
-                self.logger.info(
-                    "Attempting to upgrade %(artifact)s artifact..." % {
-                        "artifact": self.next_artifact_upgrade,
-                    }
-                )
-                timeout_artifact_search_cnt = 0
-                timeout_artifact_search_max = self.configurations["parameters"]["artifacts"]["timeout_search"]
-                try:
-                    while not self.search(
-                        image=self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                        region=self.configurations["regions"]["artifacts"]["search_area"],
-                        precision=self.configurations["parameters"]["artifacts"]["search_precision"],
-                    )[0]:
-                        self.drag(
-                            start=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
-                            end=self.configurations["points"]["travel"]["scroll"]["drag_top"],
-                            pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                        )
-                        timeout_artifact_search_cnt = self.handle_timeout(
-                            count=timeout_artifact_search_cnt,
-                            timeout=timeout_artifact_search_max,
-                        )
-                    # At this point, the artifact being upgraded should be visible on the screen,
-                    # we'll grab the position and perform a single upgrade click before continuing.
-                    _, position, image = self.search(
-                        image=self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                        region=self.configurations["regions"]["artifacts"]["search_area"],
-                        precision=self.configurations["parameters"]["artifacts"]["search_precision"],
-                    )
-                    # Dynamically calculate the location of the upgrade button
-                    # and perform a click.
-                    point = (
-                        position[0] + self.configurations["parameters"]["artifacts"]["position_x_padding"],
-                        position[1] + self.configurations["parameters"]["artifacts"]["position_y_padding"],
-                    )
-                    self.click(
-                        point=point,
-                        clicks=self.configurations["parameters"]["artifacts"]["upgrade_clicks"],
-                        interval=self.configurations["parameters"]["artifacts"]["upgrade_interval"],
-                        pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
-                    )
-                except TimeoutError:
+                # Determining if maps are even going to be used
+                # for this artifact upgrade functionality.
+                if not self.mapping_enabled:
                     self.logger.info(
-                        "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
-                            "artifact": self.next_artifact_upgrade,
-                        }
+                        "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
+                        "the \"BUY Max\" multiplier once."
                     )
+                    try:
+                        self._artifacts_ensure_multiplier(
+                            multiplier="max",
+                        )
+                        # Upgrade a single artifact to it's maximum
+                        # one time...
+                        self._artifacts_upgrade(
+                            artifact=self.next_artifact_upgrade,
+                            multiplier="max",
+                        )
+                        # Update the next artifact that will be upgraded.
+                        # This is done regardless of upgrade state (success/fail).
+                        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+                        # Exporting our prestige once it's finished and right before
+                        # exporting session data (if enabled).
+                        self.export_prestige(prestige_contents={
+                            "upgradeArtifact": self.next_artifact_upgrade,
+                        })
+                    except TimeoutError:
+                        self.logger.info(
+                            "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
+                            "skipping upgrade..." % {
+                                "artifact": self.next_artifact_upgrade,
+                            }
+                        )
+                        self.export_prestige(prestige_contents={
+                            "upgradeArtifact": None,
+                        })
+                else:
+                    upgraded_artifacts = []
+                    # Mappings are enabled... We'll begin all that functionality here.
+                    # We know maps are available, so we'll loop through all of our keys and
+                    # and handle the multiplier ordering as needed.
+                    for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
+                        multiplier = str(multiplier)
+                        self.logger.info(
+                            "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
+                                "multiplier": multiplier,
+                            }
+                        )
+                        if self.upgrade_map[multiplier]:
+                            try:
+                                self._artifacts_ensure_multiplier(
+                                    multiplier=multiplier,
+                                )
+                                for artifact in self.upgrade_map[multiplier]:
+                                    try:
+                                        self.travel_to_artifacts(
+                                            collapsed=False,
+                                            stop_image_kwargs={
+                                                "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+                                                "region": self.configurations["regions"]["artifacts"]["search_area"],
+                                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                                            },
+                                        )
+                                        self._artifacts_upgrade(
+                                            artifact=artifact,
+                                            multiplier=multiplier,
+                                        )
+                                        upgraded_artifacts.append(
+                                            artifact,
+                                        )
+                                    except TimeoutError:
+                                        self.logger.info(
+                                            "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
+                                                "artifact": artifact,
+                                            }
+                                        )
+                            except TimeoutError:
+                                self.logger.info(
+                                    "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
+                                        "multiplier": multiplier,
+                                    }
+                                )
+                        else:
+                            self.logger.info(
+                                "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
+                                    "multiplier": multiplier,
+                                }
+                            )
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": upgraded_artifacts,
+                    })
         # Reset the most powerful hero, first subsequent hero levelling
         # should handle this for us again.
         self.powerful_hero = None
@@ -2450,13 +2575,6 @@ class Bot(object):
         # Prestige specific variables can be reset now.
         self.close_to_max_ready = False
         self.master_levelled = False
-
-        # Exporting our prestige once it's finished and right before
-        # exporting session data (if enabled).
-        self.export_prestige(prestige_contents={
-            "upgradeArtifact": self.next_artifact_upgrade,
-        })
-
         # Once the prestige has finished, we need to update our most upto date
         # set of exported data, from here, we can then figure out whats changed
         # and send a new session event. If this isn't enabled, we at least get
@@ -2861,6 +2979,7 @@ class Bot(object):
         scroll=True,
         collapsed=True,
         top=True,
+        stop_image_kwargs=None,
     ):
         """
         Travel to the specified tab in game.
@@ -2963,6 +3082,13 @@ class Bot(object):
                     img = None
 
                     while True:
+                        if stop_image_kwargs:
+                            # Breaking early if image stopping is enabled
+                            # and the image kwargs are found on the screen.
+                            if self.search(
+                                **stop_image_kwargs
+                            )[0]:
+                                break
                         img, dupe = self.duplicates(
                             image=img,
                             region=self.configurations["regions"]["travel"]["duplicate_area"],
@@ -3064,6 +3190,7 @@ class Bot(object):
         scroll=True,
         collapsed=True,
         top=True,
+        stop_image_kwargs=None,
     ):
         """
         Travel to the artifacts tab in game.
@@ -3074,6 +3201,7 @@ class Bot(object):
             scroll=scroll,
             collapsed=collapsed,
             top=top,
+            stop_image_kwargs=stop_image_kwargs,
         )
 
     def travel_to_main_screen(self):
