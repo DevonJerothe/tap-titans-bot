@@ -23,6 +23,8 @@ from gui.settings import (
     MENU_TIMEOUT,
 )
 
+from win10toast import ToastNotifier
+
 from license_validator.validation import LicenseValidator
 from license_validator.utilities import (
     set_license,
@@ -61,6 +63,8 @@ class GUI(object):
         self.application_name = application_name
         self.application_version = application_version
         self.application_discord = application_discord
+
+        self.notifier = ToastNotifier()
 
         self.license = LicenseValidator()
         self.tray = sg.SystemTray(
@@ -151,6 +155,18 @@ class GUI(object):
             icon=icon or ICON_FILE,
         )
 
+    def toast(self, title, message, icon_path=ICON_FILE, duration=2.5):
+        """
+        Send a toast notification to the system tray.
+        """
+        return self.notifier.show_toast(
+            title=title,
+            msg=message,
+            icon_path=icon_path,
+            duration=duration,
+            threaded=True,
+        )
+
     def menu(self):
         """
         Generate the menu used by the system tray application.
@@ -239,6 +255,10 @@ class GUI(object):
             self.logger.info(
                 "Starting Session..."
             )
+            self.toast(
+                title="Session",
+                message="Starting Session...",
+            )
             self._stop = False
             self._pause = False
             self._session = uuid.uuid4().hex
@@ -253,6 +273,7 @@ class GUI(object):
                     "force_prestige_func": self.force_prestige_func,
                     "stop_func": self.stop_func,
                     "pause_func": self.pause_func,
+                    "toast_func": self.toast,
                 },
             )
             self._thread.start()
@@ -264,6 +285,10 @@ class GUI(object):
         if self._thread is not None:
             self.logger.info(
                 "Stopping Session..."
+            )
+            self.toast(
+                title="Session",
+                message="Stopping Session...",
             )
             self._stop = True
             self._pause = False
@@ -279,6 +304,10 @@ class GUI(object):
             self.logger.info(
                 "Pausing Session..."
             )
+            self.toast(
+                title="Session",
+                message="Pausing Session...",
+            )
             self._pause = True
 
     def resume_session(self):
@@ -288,6 +317,10 @@ class GUI(object):
         if self._thread is not None:
             self.logger.info(
                 "Resuming Session..."
+            )
+            self.toast(
+                title="Session",
+                message="Resuming Session...",
             )
             self._pause = False
 
@@ -327,9 +360,15 @@ class GUI(object):
         # Update the license text that's handled
         # by the license validation utilities.
         self.logger.info(
-            "Updating license to: %(text)s..." % {
+            "Updating License: %(text)s..." % {
                 "text": text,
             }
+        )
+        self.toast(
+            title="License",
+            message="Updating License: %(text)s..." % {
+                "text": text,
+            },
         )
         set_license(
             license_file=self.license.program_license_file,
@@ -341,7 +380,11 @@ class GUI(object):
         "tools_local_data" functionality.
         """
         self.logger.info(
-            "Opening local data directory..."
+            "Opening Local Data Directory..."
+        )
+        self.toast(
+            title="Local Data",
+            message="Opening Local Data Directory..."
         )
         os.startfile(
             filepath=self.license.program_directory,
@@ -356,9 +399,15 @@ class GUI(object):
         )
         if file:
             self.logger.info(
-                "Opening most recent log: %(file)s:..." % {
+                "Opening Most Recent Log: %(file)s:..." % {
                     "file": file,
                 }
+            )
+            self.toast(
+                title="Recent Logs",
+                message="Opening Most Recent Log: %(file)s..." % {
+                    "file": file,
+                },
             )
             return os.startfile(
                 filepath=file,
@@ -376,6 +425,12 @@ class GUI(object):
                 "license": self.license.license,
             }
         )
+        self.toast(
+            title="Flush License",
+            message="Flushing License... (%(license)s)" % {
+                "license": self.license.license,
+            },
+        )
         self.license.flush()
         self.logger.info(
             "Done..."
@@ -386,7 +441,11 @@ class GUI(object):
         "discord" event functionality.
         """
         self.logger.info(
-            "Opening discord server now..."
+            "Opening Discord Now..."
+        )
+        self.toast(
+            title="Discord",
+            message="Opening Discord Now...",
         )
         return webbrowser.open_new_tab(
             url=self.application_discord,
@@ -398,6 +457,10 @@ class GUI(object):
         """
         self.logger.info(
             "Exiting..."
+        )
+        self.toast(
+            title="Exit",
+            message="Exiting...",
         )
         self.stop_session()
         # SystemExit to leave with valid return code.
