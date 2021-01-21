@@ -53,6 +53,7 @@ class Bot(object):
         force_prestige_func,
         stop_func,
         pause_func,
+        toast_func,
     ):
         """
         Initialize a new Bot instance.
@@ -83,6 +84,9 @@ class Bot(object):
         # place during runtime.
         self.pause_func = pause_func
         self.pause_date = None
+        # toast_func can be used to send messages to the gui system
+        # directly from a bot while it's running.
+        self.toast_func = toast_func
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
@@ -3279,6 +3283,10 @@ class Bot(object):
             "expiration": self.license.expiration,
         })
         self.logger.info("===================================================================================")
+        self.toast_func(
+            title="Session",
+            message="Session Initialized Successfully..."
+        )
 
         try:
             self.configure_additional()
@@ -3323,6 +3331,11 @@ class Bot(object):
                     # case, we'll pass here but the next iteration should catch that and
                     # we wont keep running until resumed (or stopped).
                     pass
+            self.toast_func(
+                title="Session",
+                message="Session Stopped Successfully...",
+                duration=5,
+            )
 
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -3331,32 +3344,60 @@ class Bot(object):
             self.logger.info(
                 "A game state exception was encountered, ending session now..."
             )
+            self.toast_func(
+                title="Game State Exception",
+                message="Game State Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except FailSafeException:
             self.logger.info(
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
                 "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
             )
+            self.toast_func(
+                title="Failsafe Exception",
+                message="Failsafe Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except ExportContentsException:
             self.logger.info(
                 "An error occurred while attempting to export data from the game."
             )
+            self.toast_func(
+                title="Export Contents Exception",
+                message="Export Contents Exception Encountered, Ending Session Now...",
+                duration=5
+            )
         except KeyError as err:
             self.logger.info(
-                "It looks like a required configuration key (%(key)s) is either malformed or missing... "
-                "Please contact support or make sure to visit the discord to determine if any server maintenance "
-                "is actively being performed." % {
+                "It looks like a required configuration key \"%(key)s\" is either malformed or missing... Please contact support "
+                "or make sure to visit the discord to determine if any server maintenance is actively being performed." % {
                     "key": err,
                 }
+            )
+            self.toast_func(
+                title="Missing Key",
+                message="KeyError Encountered, Ending Session Now...",
+                duration=7,
             )
         except LicenseAuthenticationError:
             self.logger.info(
                 "An authentication error has occurred. Ending session now..."
             )
+            self.toast_func(
+                title="License Authentication Error",
+                message="Authentication Error Encountered. Ending Session Now...",
+                duration=7
+            )
         except StoppedException:
             # Pass when stopped exception is encountered, skip right to our
             # finally block to handle logging and cleanup.
-            pass
+            self.toast_func(
+                title="Session",
+                message="Session Stopped Successfully...",
+                duration=5,
+            )
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
