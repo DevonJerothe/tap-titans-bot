@@ -11,6 +11,7 @@ from gui.settings import (
     MENU_SEPARATOR,
     MENU_BLANK_HEADER,
     MENU_FORCE_PRESTIGE,
+    MENU_FORCE_STOP,
     MENU_START_SESSION,
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
@@ -65,6 +66,7 @@ class GUI(object):
         )
 
         self._force_prestige = False
+        self._force_stop = False
         self._stop = False
         self._pause = False
         self._thread = None
@@ -98,6 +100,7 @@ class GUI(object):
 
         self.event_map = {
             MENU_FORCE_PRESTIGE: self.force_prestige,
+            MENU_FORCE_STOP: self.force_stop,
             MENU_START_SESSION: self.start_session,
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
@@ -197,6 +200,7 @@ class GUI(object):
                 self.menu_entry(text=self.menu_title),
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_FORCE_PRESTIGE, disabled=self._thread is None or self._force_prestige is True),
+                self.menu_entry(text=MENU_FORCE_STOP, disabled=self._thread is None or self._force_stop is True),
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_START_SESSION, disabled=self._thread is not None),
                 self.menu_entry(text=MENU_STOP_SESSION, disabled=self._thread is None),
@@ -277,7 +281,39 @@ class GUI(object):
             self.logger.info(
                 "Forcing Prestige..."
             )
+            self.toast(
+                title="Force Prestige",
+                message="Forcing Prestige..."
+            )
             self._force_prestige = True
+
+    def force_stop_func(self, _set=False):
+        """
+        Return the current interval ``_force_stop`` value.
+
+        Also handling a toggle reset here, whenever force prestige is set to True,
+        we also want to reset the value.
+        """
+        if _set:
+            # Allow for an optional setting parameter to handle
+            # our func "reset". This should be called once whatever
+            # function is being executed is completed.
+            self._force_stop = False
+        return self._force_stop
+
+    def force_stop(self):
+        """
+        "force_stop" event functionality.
+        """
+        if self._thread is not None:
+            self.logger.info(
+                "Forcing Stop..."
+            )
+            self.toast(
+                title="Force Stop",
+                message="Forcing Stop...",
+            )
+            self._force_stop = True
 
     def start_session(self):
         """
@@ -303,6 +339,7 @@ class GUI(object):
                     "license_obj": self.license,
                     "session": self._session,
                     "force_prestige_func": self.force_prestige_func,
+                    "force_stop_func": self.force_stop_func,
                     "stop_func": self.stop_func,
                     "pause_func": self.pause_func,
                     "toast_func": self.toast,
@@ -520,32 +557,6 @@ class GUI(object):
         self.toast(
             title="Failsafe",
             message="Disabled Failsafe...",
-        )
-
-    def settings_enable_crash_recovery(self):
-        """
-        "settings_enable_crash_recovery" functionality.
-        """
-        self.persist.set_enable_crash_recovery(value=True)
-        self.logger.info(
-            "Enabled Crash Recovery..."
-        )
-        self.toast(
-            title="Crash Recovery",
-            message="Enabled Crash Recovery...",
-        )
-
-    def settings_disable_crash_recovery(self):
-        """
-        "settings_disable_crash_recovery" functionality.
-        """
-        self.persist.set_enable_crash_recovery(value=False)
-        self.logger.info(
-            "Disabled Failsafe..."
-        )
-        self.toast(
-            title="Crash Recovery",
-            message="Disabled Crash Recovery...",
         )
 
     def settings_enable_ad_blocking(self):
