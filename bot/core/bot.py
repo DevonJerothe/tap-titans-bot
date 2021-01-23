@@ -304,11 +304,11 @@ class Bot(object):
         self.upgrade_map_key_unmapped = "unmapped"
         self.upgrade_map_key_ordering = "percentOrder"
         self.mapping_enabled = False
-        self.upgrade_map = None
+        self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
+        self.upgrade_artifacts = None
+        self.next_artifact_upgrade = None
 
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
-            # We'll use the upgrade map to derive all of our upgrade paths...
-            self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
             # Shuffled artifact settings will shuffle everything in the map,
             # this is done regardless of maps being enabled or not.
             if self.configuration["artifacts_shuffle"]:
@@ -319,10 +319,12 @@ class Bot(object):
                     self.mapping_enabled = True
                     break
 
-        # If mappings are not enabled, we will ensure the unmapped
-        # artifacts are setup as something we can cycle through.
-        self.upgrade_artifacts = cycle(self.upgrade_map[self.upgrade_map_key_unmapped]) if not self.mapping_enabled else None
-        self.next_artifact_upgrade = next(self.upgrade_artifacts) if not self.mapping_enabled else None
+            # No maps are actually being used, in which case, we can just
+            # go ahead and setup some per prestige upgrade options.
+            if not self.mapping_enabled:
+                if self.upgrade_map[self.upgrade_map_key_unmapped]:
+                    self.upgrade_artifacts = cycle(self.upgrade_map[self.upgrade_map_key_unmapped])
+                    self.next_artifact_upgrade = next(self.upgrade_artifacts)
 
         # Session Data.
         # ------------------
@@ -2482,7 +2484,7 @@ class Bot(object):
             if self.configuration["artifacts_upgrade_enabled"]:
                 # Determining if maps are even going to be used
                 # for this artifact upgrade functionality.
-                if not self.mapping_enabled:
+                if not self.mapping_enabled and self.next_artifact_upgrade:
                     self.logger.info(
                         "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
                         "the \"BUY Max\" multiplier once."
@@ -2570,6 +2572,10 @@ class Bot(object):
                     self.export_prestige(prestige_contents={
                         "upgradeArtifact": upgraded_artifacts,
                     })
+            else:
+                self.export_prestige(prestige_contents={
+                    "upgradeArtifact": None,
+                })
         # Reset the most powerful hero, first subsequent hero levelling
         # should handle this for us again.
         self.powerful_hero = None
