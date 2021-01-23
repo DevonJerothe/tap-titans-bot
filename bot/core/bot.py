@@ -51,6 +51,7 @@ class Bot(object):
         session,
         license_obj,
         force_prestige_func,
+        force_stop_func,
         stop_func,
         pause_func,
         toast_func,
@@ -77,6 +78,9 @@ class Bot(object):
         # force_prestige_func is used to correctly handle the ability
         # to force a prestige to take place during a running session.
         self.force_prestige_func = force_prestige_func
+        # force_stop_func is used to correctly handle the ability
+        # to force a stop to take place during a running session.
+        self.force_stop_func = force_stop_func
         # stop_func is used to correctly handle our threading functionality.
         # A ``bot`` is initialized through some method that invokes a new thread.
         # We require an argument that should represent a function to determine when to exit.
@@ -214,6 +218,7 @@ class Bot(object):
             )
             self.window.configure(
                 enable_failsafe_func=self.failsafe_enabled_func,
+                force_stop_func=self.force_stop_func,
             )
         except WindowNotFoundError:
             self.logger.info(
@@ -3336,6 +3341,12 @@ class Bot(object):
                         if self.force_prestige_func():
                             self.prestige()
                             self.force_prestige_func(_set=True)
+                        if self.force_stop_func():
+                            self.force_stop_func(_set=True)
+                            # Just raise a stopped exception if we
+                            # are just exiting and it's found in between
+                            # function execution.
+                            raise StoppedException
                         # Ensure any pending scheduled jobs are executed at the beginning
                         # of our loop, each time.
                         self.schedule.run_pending()

@@ -18,6 +18,7 @@ MENU_SEPARATOR = "---"
 # when we read events to determine which buttons are pressed.
 MENU_BLANK_HEADER = "Menu"
 MENU_FORCE_PRESTIGE = "Force Prestige"
+MENU_FORCE_STOP = "Force Stop"
 MENU_START_SESSION = "Start Session"
 MENU_STOP_SESSION = "Stop Session"
 MENU_RESUME_SESSION = "Resume Session"
