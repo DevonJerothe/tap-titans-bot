@@ -1,3 +1,6 @@
+from gui.persistence import (
+    PersistenceUtils,
+)
 from gui.utilities import (
     get_most_recent_log_file,
     create_gui_logger,
@@ -18,6 +21,13 @@ from gui.settings import (
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
+    MENU_SETTINGS,
+    MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS,
+    MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
+    MENU_SETTINGS_ENABLE_FAILSAFE,
+    MENU_SETTINGS_DISABLE_FAILSAFE,
+    MENU_SETTINGS_ENABLE_AD_BLOCKING,
+    MENU_SETTINGS_DISABLE_AD_BLOCKING,
     MENU_DISCORD,
     MENU_EXIT,
     MENU_TIMEOUT,
@@ -67,13 +77,17 @@ class GUI(object):
         self.notifier = ToastNotifier()
 
         self.license = LicenseValidator()
-        self.tray = sg.SystemTray(
-            menu=self.menu(),
-            filename=ICON_FILE,
-        )
         self.logger = create_gui_logger(
             log_directory=self.license.program_logs_directory,
             log_name=self.license.program_name,
+        )
+        self.persist = PersistenceUtils(
+            file=self.license.program_persistence_file,
+            logger=self.logger,
+        )
+        self.tray = sg.SystemTray(
+            menu=self.menu(),
+            filename=ICON_FILE,
         )
 
         if not self.license.license_available:
@@ -93,6 +107,12 @@ class GUI(object):
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
+            MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS: self.settings_enable_toast_notifications,
+            MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS: self.settings_disable_toast_notifications,
+            MENU_SETTINGS_ENABLE_FAILSAFE: self.settings_enable_failsafe,
+            MENU_SETTINGS_DISABLE_FAILSAFE: self.settings_disable_failsafe,
+            MENU_SETTINGS_ENABLE_AD_BLOCKING: self.settings_enable_ad_blocking,
+            MENU_SETTINGS_DISABLE_AD_BLOCKING: self.settings_disable_ad_blocking,
             MENU_DISCORD: self.discord,
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
@@ -159,13 +179,14 @@ class GUI(object):
         """
         Send a toast notification to the system tray.
         """
-        return self.notifier.show_toast(
-            title=title,
-            msg=message,
-            icon_path=icon_path,
-            duration=duration,
-            threaded=True,
-        )
+        if self.persist.get_enable_toast_notifications():
+            return self.notifier.show_toast(
+                title=title,
+                msg=message,
+                icon_path=icon_path,
+                duration=duration,
+                threaded=True,
+            )
 
     def menu(self):
         """
@@ -191,6 +212,17 @@ class GUI(object):
                     self.menu_entry(text=MENU_TOOLS_LOCAL_DATA),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                     self.menu_entry(text=MENU_TOOLS_FLUSH_LICENSE),
+                ],
+                self.menu_entry(text=MENU_SETTINGS),
+                [
+                    self.menu_entry(text=MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
+                    self.menu_entry(text=MENU_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_SETTINGS_ENABLE_AD_BLOCKING, disabled=self.persist.get_enable_ad_blocking()),
+                    self.menu_entry(text=MENU_SETTINGS_DISABLE_AD_BLOCKING, disabled=not self.persist.get_enable_ad_blocking()),
                 ],
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_DISCORD),
@@ -274,6 +306,8 @@ class GUI(object):
                     "stop_func": self.stop_func,
                     "pause_func": self.pause_func,
                     "toast_func": self.toast,
+                    "failsafe_enabled_func": self.persist.get_enable_failsafe,
+                    "ad_blocking_enabled_func": self.persist.get_enable_ad_blocking,
                 },
             )
             self._thread.start()
@@ -434,6 +468,110 @@ class GUI(object):
         self.license.flush()
         self.logger.info(
             "Done..."
+        )
+
+    def settings_enable_toast_notifications(self):
+        """
+        "settings_enable_toast_notifications" functionality.
+        """
+        self.persist.set_enable_toast_notifications(value=True)
+        self.logger.info(
+            "Enabled Toast Notifications..."
+        )
+        self.toast(
+            title="Toast Notifications",
+            message="Enabled Toast Notifications..."
+        )
+
+    def settings_disable_toast_notifications(self):
+        """
+        "settings_disable_toast_notifications" functionality.
+        """
+        self.persist.set_enable_toast_notifications(value=False)
+        self.logger.info(
+            "Disabled Toast Notifications..."
+        )
+        self.toast(
+            title="Toast Notifications",
+            message="Disabled Toast Notifications...",
+        )
+
+    def settings_enable_failsafe(self):
+        """
+        "settings_enable_failsafe" functionality.
+        """
+        self.persist.set_enable_failsafe(value=True)
+        self.logger.info(
+            "Enabled Failsafe..."
+        )
+        self.toast(
+            title="Failsafe",
+            message="Enabled Failsafe...",
+        )
+
+    def settings_disable_failsafe(self):
+        """
+        "settings_disable_failsafe" functionality.
+        """
+        self.persist.set_enable_failsafe(value=False)
+        self.logger.info(
+            "Disabled Failsafe..."
+        )
+        self.toast(
+            title="Failsafe",
+            message="Disabled Failsafe...",
+        )
+
+    def settings_enable_crash_recovery(self):
+        """
+        "settings_enable_crash_recovery" functionality.
+        """
+        self.persist.set_enable_crash_recovery(value=True)
+        self.logger.info(
+            "Enabled Crash Recovery..."
+        )
+        self.toast(
+            title="Crash Recovery",
+            message="Enabled Crash Recovery...",
+        )
+
+    def settings_disable_crash_recovery(self):
+        """
+        "settings_disable_crash_recovery" functionality.
+        """
+        self.persist.set_enable_crash_recovery(value=False)
+        self.logger.info(
+            "Disabled Failsafe..."
+        )
+        self.toast(
+            title="Crash Recovery",
+            message="Disabled Crash Recovery...",
+        )
+
+    def settings_enable_ad_blocking(self):
+        """
+        "settings_enable_ad_blocking" functionality.
+        """
+        self.persist.set_enable_ad_blocking(value=True)
+        self.logger.info(
+            "Enabled Ad Blocking..."
+        )
+        self.toast(
+            title="Ad Blocking",
+            message="Enabled Ad Blocking...",
+        )
+
+    def settings_disable_ad_blocking(self):
+        """
+        "settings_disable_ad_blocking" functionality.
+        """
+        self.persist.set_enable_ad_blocking(value=False)
+        self.logger.info(
+            "Disabled Ad Blocking..."
+        )
+        self.toast(
+            title="Ad Blocking",
+            message="Disabled Ad Blocking...",
         )
 
     def discord(self):
