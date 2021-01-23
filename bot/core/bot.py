@@ -54,6 +54,8 @@ class Bot(object):
         stop_func,
         pause_func,
         toast_func,
+        failsafe_enabled_func,
+        ad_blocking_enabled_func,
     ):
         """
         Initialize a new Bot instance.
@@ -87,6 +89,11 @@ class Bot(object):
         # toast_func can be used to send messages to the gui system
         # directly from a bot while it's running.
         self.toast_func = toast_func
+
+        # Additionally, certain configurations are persisted
+        # locally and can be enabled/disabled through the gui.
+        self.failsafe_enabled_func = failsafe_enabled_func
+        self.ad_blocking_enabled_func = ad_blocking_enabled_func
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
@@ -206,7 +213,7 @@ class Bot(object):
                 filter_title=self.configuration["emulator_window"],
             )
             self.window.configure(
-                enable_failsafe=self.configuration["failsafe_enabled"],
+                enable_failsafe_func=self.failsafe_enabled_func,
             )
         except WindowNotFoundError:
             self.logger.info(
@@ -365,7 +372,7 @@ class Bot(object):
         """
         _schedule = {
             self.check_game_state: {
-                "enabled": self.configuration["crash_recovery_enabled"],
+                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
                 "interval": self.configurations["global"]["check_game_state"]["check_game_state_interval"],
                 "reset": True,
             },
@@ -512,7 +519,7 @@ class Bot(object):
         """
         for function, data in {
             self.check_game_state: {
-                "enabled": self.configuration["crash_recovery_enabled"],
+                "enabled": self.configurations["global"]["check_game_state"]["check_game_state_enabled"],
                 "execute": self.configurations["global"]["check_game_state"]["check_game_state_on_start"],
             },
             self.export_data: {
@@ -1366,7 +1373,7 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through ad blocking, unrelated to our code here).
-                if self.configuration["ad_blocking_enabled"]:
+                if self.ad_blocking_enabled_func():
                     self.logger.info(
                         "Attempting to collect ad rewards through pi-hole disabled ads..."
                     )
@@ -1986,7 +1993,7 @@ class Bot(object):
                         continue
                     # Should we try and use the ad blocking functionality to handle
                     # the collection of the mega boost perk?
-                    if self.configuration["ad_blocking_enabled"]:
+                    if self.ad_blocking_enabled_func():
                         # Follow normal flow and try to watch the ad
                         # "Okay" button will begin the process.
                         self.click(
