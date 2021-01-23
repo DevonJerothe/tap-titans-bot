@@ -18,6 +18,7 @@ from license_validator.settings import (
     LOCAL_DATA_DEPENDENCY_DIRECTORY,
     LOCAL_DATA_LOGS_DIRECTORY,
     LOCAL_DATA_LICENSE_FILE,
+    LOCAL_DATA_PERSISTENCE_FILE,
     TEMPLATE_CONFIGURATIONS,
 )
 from license_validator.utilities import (
@@ -77,6 +78,7 @@ class LicenseValidator(object):
         self.program_dependency_directory = LOCAL_DATA_DEPENDENCY_DIRECTORY
         self.program_logs_directory = LOCAL_DATA_LOGS_DIRECTORY
         self.program_license_file = LOCAL_DATA_LICENSE_FILE
+        self.program_persistence_file = LOCAL_DATA_PERSISTENCE_FILE
 
         self.program_configurations_template = TEMPLATE_CONFIGURATIONS
         self.bulk_collect_chunk = 20
@@ -124,6 +126,7 @@ class LicenseValidator(object):
         # guaranteed to be available. Opening them in write mode to create.
         for file in [
             self.program_license_file,
+            self.program_persistence_file,
         ]:
             if not os.path.exists(file):
                 with open(file, mode="w"):
