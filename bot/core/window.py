@@ -48,19 +48,19 @@ class Window(object):
         """
         Initialize a new window object with the specified hwnd value.
         """
-        self.enable_failsafe = False
+        self.enable_failsafe_func = None
         self.emulator_width = 480
         self.emulator_height = 800
         self.hwnd = int(hwnd)
 
     def configure(
         self,
-        enable_failsafe,
+        enable_failsafe_func,
     ):
         """
         Configure the given window, ensuring the expected settings are included.
         """
-        self.enable_failsafe = enable_failsafe
+        self.enable_failsafe_func = enable_failsafe_func
         self.form = Window(win32gui.FindWindowEx(None, win32gui.FindWindowEx(None, None, self.FORM_CLASS, None), self.FORM_CLASS, None))
 
     def __str__(self):
@@ -142,7 +142,7 @@ class Window(object):
         """
         Perform the proper failsafe check here (if enabled).
         """
-        if self.enable_failsafe:
+        if self.enable_failsafe_func():
             pyautogui.failSafeCheck()
 
     def search(self, value):
