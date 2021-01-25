@@ -3357,8 +3357,8 @@ class Bot(object):
                             self.pause_date = None
                         # Check for explicit prestige force...
                         if self.force_prestige_func():
-                            self.prestige()
                             self.force_prestige_func(_set=True)
+                            self.prestige()
                         if self.force_stop_func():
                             self.force_stop_func(_set=True)
                             # Just raise a stopped exception if we
