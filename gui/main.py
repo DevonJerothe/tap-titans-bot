@@ -16,7 +16,7 @@ from gui.settings import (
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
     MENU_PAUSE_SESSION,
-    MENU_CONFIGURATIONS,
+    MENU_VIEW_CONFIGURATIONS,
     MENU_UPDATE_LICENSE,
     MENU_TOOLS,
     MENU_TOOLS_LOCAL_DATA,
@@ -105,7 +105,7 @@ class GUI(object):
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
-            MENU_CONFIGURATIONS: self.configurations,
+            MENU_VIEW_CONFIGURATIONS: self.view_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
@@ -208,14 +208,16 @@ class GUI(object):
                 self.menu_entry(text=MENU_RESUME_SESSION, disabled=self._thread is None or self._pause is False),
                 self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self._thread is None or self._pause is True),
                 self.menu_entry(separator=True),
-                self.menu_entry(text=MENU_CONFIGURATIONS),
-                self.menu_entry(text=MENU_UPDATE_LICENSE),
-                self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_TOOLS),
                 [
                     self.menu_entry(text=MENU_TOOLS_LOCAL_DATA),
-                    self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_UPDATE_LICENSE),
                     self.menu_entry(text=MENU_TOOLS_FLUSH_LICENSE),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_VIEW_CONFIGURATIONS),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
                 self.menu_entry(text=MENU_SETTINGS),
                 [
@@ -395,9 +397,9 @@ class GUI(object):
             )
             self._pause = False
 
-    def configurations(self):
+    def view_configurations(self):
         """
-        "configurations" event functionality.
+        "view_configurations" event functionality.
         """
         if self.license.license_available:
             return webbrowser.open_new_tab(
