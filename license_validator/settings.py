@@ -13,7 +13,7 @@ VALIDATION_IDENTIFIER_SECRET = "4X$bmcAwc{%_K"
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
 # Additional url's are generated below.
-VALIDATION_URL = "https://www.titanbots.net"
+VALIDATION_URL = "http://localhost:8000"  # "https://www.titanbots.net"
 VALIDATION_LICENSES_URL = "%(validation_url)s/%(licenses_endpoint)s" % {
     "validation_url": VALIDATION_URL,
     "licenses_endpoint": "licenses",
@@ -86,6 +86,9 @@ LOCAL_DATA_LOGS_DIRECTORY = path.join(LOCAL_DATA_DIRECTORY, "logs")
 # The license information should be stored in our local data directory
 # in a proper text file.
 LOCAL_DATA_LICENSE_FILE = path.join(LOCAL_DATA_DIRECTORY, "license.txt")
+# Any persisted data can be stored here and used within the
+# gui on subsequent startup's.
+LOCAL_DATA_PERSISTENCE_FILE = path.join(LOCAL_DATA_DIRECTORY, "persistence.txt")
 
 TEMPLATE_CONFIGURATIONS = "%(validation_url)s/profile/configurations" % {
     "validation_url": VALIDATION_URL,

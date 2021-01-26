@@ -1,4 +1,7 @@
-from bot.core.exceptions import WindowNotFoundError
+from bot.core.exceptions import (
+    WindowNotFoundError,
+    StoppedException,
+)
 
 from PIL import Image
 from ctypes import windll
@@ -48,19 +51,26 @@ class Window(object):
         """
         Initialize a new window object with the specified hwnd value.
         """
-        self.enable_failsafe = False
+        self.enable_failsafe_func = None
+        self.force_stop_func = None
+        # Hard code/set these to handle some additional work
+        # done while taking screenshots and calculating points...
         self.emulator_width = 480
         self.emulator_height = 800
+        # "hwnd" is used throughout to send signals
+        # to the window in question...
         self.hwnd = int(hwnd)
 
     def configure(
         self,
-        enable_failsafe,
+        enable_failsafe_func,
+        force_stop_func,
     ):
         """
         Configure the given window, ensuring the expected settings are included.
         """
-        self.enable_failsafe = enable_failsafe
+        self.enable_failsafe_func = enable_failsafe_func
+        self.force_stop_func = force_stop_func
         self.form = Window(win32gui.FindWindowEx(None, win32gui.FindWindowEx(None, None, self.FORM_CLASS, None), self.FORM_CLASS, None))
 
     def __str__(self):
@@ -142,8 +152,16 @@ class Window(object):
         """
         Perform the proper failsafe check here (if enabled).
         """
-        if self.enable_failsafe:
+        if self.enable_failsafe_func():
             pyautogui.failSafeCheck()
+
+    def _force_stop(self):
+        """
+        Perform the proper force stop check here (if enabled).
+        """
+        if self.force_stop_func():
+            self.force_stop_func(_set=True)
+            raise StoppedException
 
     def search(self, value):
         """
@@ -165,6 +183,7 @@ class Window(object):
         Perform a click on the window in the background.
         """
         self._failsafe()
+        self._force_stop()
 
         _point = self._gen_offset(point=point, amount=offset)
         _parameter = win32api.MAKELONG(point[0], point[1] + self.y_padding)
@@ -183,6 +202,7 @@ class Window(object):
         Perform a drag on this window in the background.
         """
         self._failsafe()
+        self._force_stop()
 
         _parameter_start = win32api.MAKELONG(start[0], start[1] + self.y_padding)
         _parameter_end = win32api.MAKELONG(end[0], end[1] + self.y_padding)
@@ -219,6 +239,7 @@ class Window(object):
         amount is used to shrink or grow the circle with each subsequent loop.
         """
         self._failsafe()
+        self._force_stop()
         # Grab our initial point.
         # This is hardcoded since we always expect
         # our window to be the correct size.
@@ -245,6 +266,7 @@ class Window(object):
                     continue
                 if i % 100 == 0:
                     self._failsafe()
+                    self._force_stop()
                 _parameter = win32api.MAKELONG(
                     int(x + radius * math.cos(math.radians(i))) + random.randint(-offset, offset),
                     int(y + radius * math.sin(math.radians(i))) + random.randint(-offset, offset),
