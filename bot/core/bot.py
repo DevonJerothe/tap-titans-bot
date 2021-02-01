@@ -3426,6 +3426,11 @@ class Bot(object):
                     if self.pause_func():
                         if not self.pause_date:
                             self.pause_date = datetime.datetime.now()
+                            self.toast_func(
+                                title="Session",
+                                message="Session Paused Successfully...",
+                                duration=5,
+                            )
                         # Currently paused through the GUI.
                         # Just wait and sleep slightly in between checks.
                         if self.stream.last_message != "Paused...":
