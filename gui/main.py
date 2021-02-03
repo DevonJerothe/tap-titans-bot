@@ -16,19 +16,20 @@ from gui.settings import (
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
     MENU_PAUSE_SESSION,
-    MENU_VIEW_CONFIGURATIONS,
     MENU_UPDATE_LICENSE,
     MENU_TOOLS,
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
     MENU_SETTINGS,
-    MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS,
-    MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
-    MENU_SETTINGS_ENABLE_FAILSAFE,
-    MENU_SETTINGS_DISABLE_FAILSAFE,
-    MENU_SETTINGS_ENABLE_AD_BLOCKING,
-    MENU_SETTINGS_DISABLE_AD_BLOCKING,
+    MENU_SETTINGS_VIEW_CONFIGURATIONS,
+    MENU_LOCAL_SETTINGS,
+    MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS,
+    MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
+    MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE,
+    MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE,
+    MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING,
+    MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING,
     MENU_DISCORD,
     MENU_EXIT,
     MENU_TIMEOUT,
@@ -106,17 +107,17 @@ class GUI(object):
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
-            MENU_VIEW_CONFIGURATIONS: self.view_configurations,
+            MENU_SETTINGS_VIEW_CONFIGURATIONS: self.settings_view_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
-            MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS: self.settings_enable_toast_notifications,
-            MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS: self.settings_disable_toast_notifications,
-            MENU_SETTINGS_ENABLE_FAILSAFE: self.settings_enable_failsafe,
-            MENU_SETTINGS_DISABLE_FAILSAFE: self.settings_disable_failsafe,
-            MENU_SETTINGS_ENABLE_AD_BLOCKING: self.settings_enable_ad_blocking,
-            MENU_SETTINGS_DISABLE_AD_BLOCKING: self.settings_disable_ad_blocking,
+            MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS: self.settings_local_enable_toast_notifications,
+            MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS: self.settings_local_disable_toast_notifications,
+            MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE: self.settings_local_enable_failsafe,
+            MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE: self.settings_local_disable_failsafe,
+            MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING: self.settings_local_enable_ad_blocking,
+            MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING: self.settings_local_disable_ad_blocking,
             MENU_DISCORD: self.discord,
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
@@ -216,20 +217,23 @@ class GUI(object):
                     self.menu_entry(text=MENU_UPDATE_LICENSE),
                     self.menu_entry(text=MENU_TOOLS_FLUSH_LICENSE),
                     self.menu_entry(separator=True),
-                    self.menu_entry(text=MENU_VIEW_CONFIGURATIONS),
-                    self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
                 self.menu_entry(text=MENU_SETTINGS),
                 [
-                    self.menu_entry(text=MENU_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
-                    self.menu_entry(text=MENU_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_SETTINGS_VIEW_CONFIGURATIONS),
+                ],
+                self.menu_entry(text=MENU_LOCAL_SETTINGS),
+                [
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
+                                    disabled=not self.persist.get_enable_toast_notifications()),
                     self.menu_entry(separator=True),
-                    self.menu_entry(text=MENU_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
-                    self.menu_entry(text=MENU_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
                     self.menu_entry(separator=True),
-                    self.menu_entry(text=MENU_SETTINGS_ENABLE_AD_BLOCKING, disabled=self.persist.get_enable_ad_blocking()),
-                    self.menu_entry(text=MENU_SETTINGS_DISABLE_AD_BLOCKING, disabled=not self.persist.get_enable_ad_blocking()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING, disabled=self.persist.get_enable_ad_blocking()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING, disabled=not self.persist.get_enable_ad_blocking()),
                 ],
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_DISCORD),
@@ -406,9 +410,9 @@ class GUI(object):
             )
             self._pause = False
 
-    def view_configurations(self):
+    def settings_view_configurations(self):
         """
-        "view_configurations" event functionality.
+        "settings_view_configurations" event functionality.
         """
         if self.license.license_available:
             return webbrowser.open_new_tab(
@@ -518,9 +522,9 @@ class GUI(object):
             "Done..."
         )
 
-    def settings_enable_toast_notifications(self):
+    def settings_local_enable_toast_notifications(self):
         """
-        "settings_enable_toast_notifications" functionality.
+        "settings_local_enable_toast_notifications" functionality.
         """
         self.persist.set_enable_toast_notifications(value=True)
         self.logger.info(
@@ -531,9 +535,9 @@ class GUI(object):
             message="Enabled Toast Notifications..."
         )
 
-    def settings_disable_toast_notifications(self):
+    def settings_local_disable_toast_notifications(self):
         """
-        "settings_disable_toast_notifications" functionality.
+        "settings_local_disable_toast_notifications" functionality.
         """
         self.persist.set_enable_toast_notifications(value=False)
         self.logger.info(
@@ -544,9 +548,9 @@ class GUI(object):
             message="Disabled Toast Notifications...",
         )
 
-    def settings_enable_failsafe(self):
+    def settings_local_enable_failsafe(self):
         """
-        "settings_enable_failsafe" functionality.
+        "settings_local_enable_failsafe" functionality.
         """
         self.persist.set_enable_failsafe(value=True)
         self.logger.info(
@@ -557,9 +561,9 @@ class GUI(object):
             message="Enabled Failsafe...",
         )
 
-    def settings_disable_failsafe(self):
+    def settings_local_disable_failsafe(self):
         """
-        "settings_disable_failsafe" functionality.
+        "settings_local_disable_failsafe" functionality.
         """
         self.persist.set_enable_failsafe(value=False)
         self.logger.info(
@@ -570,9 +574,9 @@ class GUI(object):
             message="Disabled Failsafe...",
         )
 
-    def settings_enable_ad_blocking(self):
+    def settings_local_enable_ad_blocking(self):
         """
-        "settings_enable_ad_blocking" functionality.
+        "settings_local_enable_ad_blocking" functionality.
         """
         self.persist.set_enable_ad_blocking(value=True)
         self.logger.info(
@@ -583,9 +587,9 @@ class GUI(object):
             message="Enabled Ad Blocking...",
         )
 
-    def settings_disable_ad_blocking(self):
+    def settings_local_disable_ad_blocking(self):
         """
-        "settings_disable_ad_blocking" functionality.
+        "settings_local_disable_ad_blocking" functionality.
         """
         self.persist.set_enable_ad_blocking(value=False)
         self.logger.info(
