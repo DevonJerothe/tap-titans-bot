@@ -3451,26 +3451,41 @@ class Bot(object):
         """
         Travel to the main game screen (no tabs open) in game.
         """
+        timeout_travel_to_main_screen_cnt = 0
+        timeout_travel_to_main_screen_max = self.configurations["parameters"]["travel"]["timeout_travel_main_screen"]
+
         while True:
-            found, position, image = self.search(
-                image=[file for file in self.image_tabs.keys()],
-                region=self.configurations["regions"]["travel"]["search_area"],
-                precision=self.configurations["parameters"]["travel"]["precision"],
-            )
-            if found:
-                tab = self.image_tabs[image]
-                self.logger.debug(
-                    "It looks like the %(tab)s tab is open, attempting to close..." % {
-                        "tab": tab,
-                    }
+            try:
+                timeout_travel_to_main_screen_cnt = self.handle_timeout(
+                    count=timeout_travel_to_main_screen_cnt,
+                    timeout=timeout_travel_to_main_screen_max
                 )
-                self.click(
-                    point=self.configurations["points"]["travel"]["tabs"][tab],
-                    pause=self.configurations["parameters"]["travel"]["click_pause"],
+                found, position, image = self.search(
+                    image=[file for file in self.image_tabs.keys()],
+                    region=self.configurations["regions"]["travel"]["search_area"],
+                    precision=self.configurations["parameters"]["travel"]["precision"],
                 )
-            else:
-                # If nothing is found now... We can safely just
-                # assume that no tabs are open, breaking!
+                if found:
+                    tab = self.image_tabs[image]
+                    self.logger.debug(
+                        "It looks like the %(tab)s tab is open, attempting to close..." % {
+                            "tab": tab,
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["travel"]["tabs"][tab],
+                        pause=self.configurations["parameters"]["travel"]["click_pause"],
+                    )
+                else:
+                    # If nothing is found now... We can safely just
+                    # assume that no tabs are open, breaking!
+                    break
+            # If a timeout error does occur, we'll continue to run, whatever is blocking us here
+            # will likely be caught later on.
+            except TimeoutError:
+                self.logger.info(
+                    "Unable to travel to the main screen in game, skipping..."
+                )
                 break
 
     def export_session(self, export_contents=None, original_contents=None, extra={}):
