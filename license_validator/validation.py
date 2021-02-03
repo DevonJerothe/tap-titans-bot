@@ -1,6 +1,7 @@
 from license_validator.settings import (
     VALIDATION_NAME,
     VALIDATION_IDENTIFIER_SECRET,
+    VALIDATION_URL,
     VALIDATION_SYNCED,
     VALIDATION_SYNC,
     VALIDATION_DEPENDENCIES_CHECK_URL,
@@ -58,6 +59,7 @@ class LicenseValidator(object):
         """
         self.program_name = VALIDATION_NAME
         self.program_identifier = VALIDATION_IDENTIFIER_SECRET
+        self.program_url = VALIDATION_URL
 
         self.program_dependencies_check_url = VALIDATION_DEPENDENCIES_CHECK_URL
         self.program_dependencies_retrieve_url = VALIDATION_DEPENDENCIES_RETRIEVE_URL
