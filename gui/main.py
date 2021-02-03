@@ -99,6 +99,7 @@ class GUI(object):
             self.update_license()
 
         self.event_map = {
+            self.menu_title: self.menu_title_link,
             MENU_FORCE_PRESTIGE: self.force_prestige,
             MENU_FORCE_STOP: self.force_stop,
             MENU_START_SESSION: self.start_session,
@@ -248,6 +249,14 @@ class GUI(object):
             self._thread = None
 
         self.tray.update(menu=self.menu())
+
+    def menu_title_link(self):
+        """
+        "menu_title" event functionality.
+        """
+        return webbrowser.open_new_tab(
+            url=self.license.program_url,
+        )
 
     def stop_func(self):
         """
