@@ -108,6 +108,11 @@ class Bot(object):
         # determine whether or not reset safe functions
         # should be determined and modified.
         self.scheduled = False
+        # The last screenshot variable is used to store image objects
+        # that are taken every time game state is checked, if the last
+        # screenshot is ever the same as the current one, the emulator has
+        # most likely frozen.
+        self.last_screenshot = None
 
         self.session = session
         self.license = license_obj
@@ -617,14 +622,66 @@ class Bot(object):
         # our timeout after incrementing it by one.
         raise TimeoutError()
 
-    def check_game_state(self):
+    def _check_game_state_reboot(self):
         """
-        Perform a check on the emulator to determine whether or not the game state is no longer
-        in a valid place to derive that the game is still running. The emulator may crash
-        during runtime, we can at least attempt to recover.
+        Reboot the emulator if possible, raising a game state exception if it is not possible.
         """
-        timeout_check_game_state_cnt = 0
-        timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
+        self.logger.info(
+            "Unable to handle current game state, attempting to recover and restart application..."
+        )
+        # Attempting to drag the screen and use the emulator screen
+        # directly to travel to the home screen to recover.
+        self.drag(
+            start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
+            end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
+            pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
+        )
+        self.click(
+            point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
+            clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
+            interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
+            pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
+            offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+        )
+        # The home screen should be active and the icon present on screen.
+        found, position, image = self.search(
+            image=self.files["application_icon"],
+            region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+            precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+        )
+        if found:
+            self.logger.info(
+                "Application icon found, attempting to open game now..."
+            )
+            self.click_image(
+                image=image,
+                position=position,
+                pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+            )
+            return
+        else:
+            self.logger.info(
+                "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
+                "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
+                "and visible."
+            )
+            self.logger.info(
+                "If the application icon is visible and you're still getting this error, please contact support for "
+                "additional help."
+            )
+            self.logger.info(
+                "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
+                "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
+                "to travel to the home screen."
+            )
+        raise GameStateException()
+
+    def _check_game_state_generic(self):
+        """
+        Handle the generic game state check.
+        """
+        timeout_check_game_state_generic_cnt = 0
+        timeout_check_game_state_generic_max = self.configurations["parameters"]["check_game_state"]["check_game_state_generic_timeout"]
 
         while True:
             # Attempting to travel to the main screen
@@ -635,29 +692,29 @@ class Bot(object):
 
             try:
                 if not self.search(
-                    image=[
-                        # Exit.
-                        self.files["large_exit"],
-                        # Misc.
-                        self.files["fight_boss_icon"],
-                        self.files["leave_boss_icon"],
-                        # Travel Tabs.
-                        self.files["travel_master_icon"],
-                        self.files["travel_heroes_icon"],
-                        self.files["travel_equipment_icon"],
-                        self.files["travel_pets_icon"],
-                        self.files["travel_artifacts_icon"],
-                        # Explicit Game State Images.
-                        self.files["coin_icon"],
-                        self.files["master_icon"],
-                        self.files["relics_icon"],
-                        self.files["options_icon"],
-                    ],
-                    precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+                        image=[
+                            # Exit.
+                            self.files["large_exit"],
+                            # Misc.
+                            self.files["fight_boss_icon"],
+                            self.files["leave_boss_icon"],
+                            # Travel Tabs.
+                            self.files["travel_master_icon"],
+                            self.files["travel_heroes_icon"],
+                            self.files["travel_equipment_icon"],
+                            self.files["travel_pets_icon"],
+                            self.files["travel_artifacts_icon"],
+                            # Explicit Game State Images.
+                            self.files["coin_icon"],
+                            self.files["master_icon"],
+                            self.files["relics_icon"],
+                            self.files["options_icon"],
+                        ],
+                        precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
                 )[0]:
-                    timeout_check_game_state_cnt = self.handle_timeout(
-                        count=timeout_check_game_state_cnt,
-                        timeout=timeout_check_game_state_max,
+                    timeout_check_game_state_generic_cnt = self.handle_timeout(
+                        count=timeout_check_game_state_generic_cnt,
+                        timeout=timeout_check_game_state_generic_max,
                     )
                     # Pause slightly in between our checks...
                     # We don't wanna check too quickly.
@@ -666,55 +723,90 @@ class Bot(object):
                     # Game state is fine, exit with no errors.
                     break
             except TimeoutError:
-                self.logger.info(
-                    "Unable to derive current game state, attempting to recover and restart application..."
+                # Rebooting whenever the generic checks fail
+                # for whatever reason...
+                self._check_game_state_reboot()
+
+    def _check_game_state_fairies(self):
+        """
+        Handle the fairies based game state check.
+        """
+        timeout_check_game_state_fairies_cnt = 0
+        timeout_check_game_state_fairies_max = self.configurations["parameters"]["check_game_state"]["check_game_state_fairies_timeout"]
+
+        try:
+            while self.search(
+                image=self.files["fairies_no_thanks"],
+                region=self.configurations["regions"]["fairies"]["no_thanks_area"],
+                precision=self.configurations["parameters"]["fairies"]["no_thanks_precision"],
+            )[0]:
+                timeout_check_game_state_fairies_cnt = self.handle_timeout(
+                    count=timeout_check_game_state_fairies_cnt,
+                    timeout=timeout_check_game_state_fairies_max,
                 )
-                # Attempting to drag the screen and use the emulator screen
-                # directly to travel to the home screen to recover.
-                self.drag(
-                    start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
-                    end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
-                    pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
-                )
+                # A fairy is on the screen, since this is a game state check, we're going to
+                # actually decline the ad in this case after clicking on the middle of the screen.
                 self.click(
-                    point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
-                    clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
-                    interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
-                    pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
-                    offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["check_game_state"]["fairies_pre_clicks"],
+                    interval=self.configurations["parameters"]["check_game_state"]["fairies_pre_interval"],
+                    pause=self.configurations["parameters"]["check_game_state"]["fairies_pre_pause"],
                 )
-                # The home screen should be active and the icon present on screen.
-                found, position, image = self.search(
-                    image=self.files["application_icon"],
-                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                self.find_and_click_image(
+                    image=self.files["fairies_no_thanks"],
+                    region=self.configurations["regions"]["fairies"]["no_thanks_area"],
+                    precision=self.configurations["parameters"]["fairies"]["no_thanks_precision"],
+                    pause=self.configurations["parameters"]["fairies"]["no_thanks_pause"],
                 )
-                if found:
-                    self.logger.info(
-                        "Application icon found, attempting to open game now..."
-                    )
-                    self.click_image(
-                        image=image,
-                        position=position,
-                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
-                    )
-                    return
-                else:
-                    self.logger.info(
-                        "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
-                        "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
-                        "and visible."
-                    )
-                    self.logger.info(
-                        "If the application icon is visible and you're still getting this error, please contact support for "
-                        "additional help."
-                    )
-                    self.logger.info(
-                        "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
-                        "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
-                        "to travel to the home screen."
-                    )
-                raise GameStateException()
+        except TimeoutError:
+            # Reboot if the ad is unable to be closed for some reason
+            # in game, the reboot lets us get a fresh start...
+            self._check_game_state_reboot()
+
+    def _check_game_state_frozen(self):
+        """
+        Handle the frozen emulator based game state check.
+        """
+        if not self.last_screenshot:
+            self.last_screenshot = self.snapshot(
+                region=self.configurations["regions"]["check_game_state"]["frozen_screenshot_area"],
+                pause=self.configurations["parameters"]["check_game_state"]["frozen_screenshot_pause"],
+            )
+        # Comparing the last screenshot available with the current
+        # screenshot of the emulator screen.
+        self.last_screenshot, duplicates = self.duplicates(
+            image=self.last_screenshot,
+            region=self.configurations["regions"]["check_game_state"]["frozen_screenshot_area"],
+            pause_before_check=self.configurations["parameters"]["check_game_state"]["frozen_screenshot_before_pause"],
+        )
+        if duplicates:
+            self._check_game_state_reboot()
+
+    def check_game_state(self):
+        """
+        Perform a check on the emulator to determine whether or not the game state is no longer
+        in a valid place to derive that the game is still running. The emulator may crash
+        during runtime, we can at least attempt to recover.
+        """
+        self.logger.debug(
+            "Checking game state..."
+        )
+
+        # A couple of different methods are used to determine a game state...
+        # Different odd use cases occur within the game that we check for here
+        # and solve through this method.
+
+        # 1. A fairy ad is stuck on the screen...
+        #    This one is odd, but can be solved by clicking on the middle
+        #    of the screen and then trying to collect the ad.
+        self._check_game_state_fairies()
+        # 2. The game has frozen completely, we track this by taking a screenshot of the entire
+        #    screen when we're in here and comparing it to the last one taken each time, if the
+        #    images are the same, we should reboot the game.
+        self._check_game_state_frozen()
+        # 3. The generic game state check, we try to travel to the main game screen
+        #    and then we look for some key images that would mean we are still in the game.
+        self._check_game_state_generic()
 
     def check_license(self):
         """
@@ -765,6 +857,7 @@ class Bot(object):
         self,
         region=None,
         scale=None,
+        pause=0.0
     ):
         """
         Take a snapshot of the current windows screen.
@@ -784,6 +877,10 @@ class Bot(object):
                 snapshot.width * scale,
                 snapshot.height * scale,
             ))
+        if pause:
+            time.sleep(
+                pause
+            )
         return snapshot
 
     def process(
@@ -938,6 +1035,8 @@ class Bot(object):
         self,
         image,
         region=None,
+        pause_before_check=0.0,
+        threshold=10,
     ):
         """
         Check that a given snapshot is the exact same as the current snapshot available.
@@ -949,10 +1048,14 @@ class Bot(object):
             # Force image, false return. The second iteration will now
             # contain our proper image and valid dupe status.
             return image, False
-        latest = self.snapshot(region=region)
+        latest = self.snapshot(
+            region=region,
+            pause=pause_before_check,
+        )
         return latest, compare_images(
             image_one=image,
             image_two=latest,
+            threshold=threshold,
         )
 
     def point_is_color(
