@@ -313,6 +313,7 @@ class Bot(object):
         # "upgrade_map_keys" - List of keys present in the artifact maps.
         # "upgrade_map_key_unmapped" - The key used to find unmapped artifacts.
         # "upgrade_map_key_ordering" - The key used to determine the order of artifacts.
+        # "upgrade_map_key_limits" - The key used to determine the limits of artifacts.
         # "mapping_enabled" - Whether or not the mapping functionality is enabled.
         # "upgrade_map" - The map containing all artifact options from a configuration.
         # "upgrade_artifacts" - A list of artifacts to upgrade, one at a time, during a session.
@@ -320,6 +321,7 @@ class Bot(object):
         self.upgrade_map_keys = ["1", "5", "25", "max"]
         self.upgrade_map_key_unmapped = "unmapped"
         self.upgrade_map_key_ordering = "percentOrder"
+        self.upgrade_map_key_limits = "mappedLimits"
         self.mapping_enabled = False
         self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
         self.upgrade_artifacts = None
@@ -2655,11 +2657,24 @@ class Bot(object):
                             }
                         )
                         if self.upgrade_map[multiplier]:
+                            count, limit = (
+                                0,
+                                self.upgrade_map[self.upgrade_map_key_limits][multiplier]
+                            )
                             try:
                                 self._artifacts_ensure_multiplier(
                                     multiplier=multiplier,
                                 )
                                 for artifact in self.upgrade_map[multiplier]:
+                                    if limit:
+                                        if count >= int(limit):
+                                            self.logger.info(
+                                                "Mapped artifact upgrade limit (%(limit)s) reached, ending mapped artifact "
+                                                "upgrades early..." % {
+                                                    "limit": limit,
+                                                }
+                                            )
+                                            break
                                     try:
                                         self.travel_to_artifacts(
                                             collapsed=False,
@@ -2676,20 +2691,13 @@ class Bot(object):
                                         upgraded_artifacts.append(
                                             artifact,
                                         )
+                                        count += 1
                                     except TimeoutError:
                                         self.logger.info(
                                             "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
                                                 "artifact": artifact,
                                             }
                                         )
-                                # After artifact upgrades are complete, we'll re shuffle the maps
-                                # if it's enabled...
-                                if self.configuration["artifacts_shuffle"]:
-                                    self.logger.info(
-                                        "Shuffling artifacts maps following upgrades..."
-                                    )
-                                    for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
-                                        random.shuffle(self.upgrade_map[key])
                             except TimeoutError:
                                 self.logger.info(
                                     "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
@@ -2702,6 +2710,14 @@ class Bot(object):
                                     "multiplier": multiplier,
                                 }
                             )
+                    # After artifact upgrades are complete, we'll re shuffle the maps
+                    # if it's enabled...
+                    if self.configuration["artifacts_shuffle"]:
+                        self.logger.info(
+                            "Shuffling artifacts maps following upgrades..."
+                        )
+                        for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
+                            random.shuffle(self.upgrade_map[key])
                     self.export_prestige(prestige_contents={
                         "upgradeArtifact": upgraded_artifacts,
                     })
