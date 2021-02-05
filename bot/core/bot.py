@@ -306,6 +306,7 @@ class Bot(object):
             self.files["travel_equipment_icon"]: "equipment",
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
+            self.files["travel_shop_icon"]: "shop",
         }
 
         # Artifact Data.
@@ -3273,30 +3274,31 @@ class Bot(object):
 
             # Tab is open at this point. Perform the collapse, un-collapse functionality
             # before attempting to scroll to the top or bottom of a panel.
-            if collapsed:
-                # We want to "collapse" the panel, check if it's already
-                # collapsed at this point.
-                self.click(
-                    point=self.configurations["points"]["travel"]["collapse"],
-                    pause=self.configurations["parameters"]["travel"]["collapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapsed"],
-                        "region": self.configurations["regions"]["travel"]["collapsed_area"],
-                        "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
-                    },
-                )
-            else:
-                self.click(
-                    point=self.configurations["points"]["travel"]["uncollapse"],
-                    pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapse"],
-                        "region": self.configurations["regions"]["travel"]["collapse_area"],
-                        "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                    },
-                )
+            if collapsed is not None:
+                if collapsed:
+                    # We want to "collapse" the panel, check if it's already
+                    # collapsed at this point.
+                    self.click(
+                        point=self.configurations["points"]["travel"]["collapse"],
+                        pause=self.configurations["parameters"]["travel"]["collapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapsed"],
+                            "region": self.configurations["regions"]["travel"]["collapsed_area"],
+                            "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
+                        },
+                    )
+                else:
+                    self.click(
+                        point=self.configurations["points"]["travel"]["uncollapse"],
+                        pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapse"],
+                            "region": self.configurations["regions"]["travel"]["collapse_area"],
+                            "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+                        },
+                    )
 
             if scroll:
                 scroll_img = self.files.get("travel_%(tab)s_%(scroll_key)s" % {
@@ -3441,6 +3443,25 @@ class Bot(object):
         self.travel(
             tab="artifacts",
             image=self.files["travel_artifacts_icon"] if not self.configuration["abyssal"] else self.files["travel_artifacts_abyssal_icon"],
+            scroll=scroll,
+            collapsed=collapsed,
+            top=top,
+            stop_image_kwargs=stop_image_kwargs,
+        )
+
+    def travel_to_shop(
+        self,
+        scroll=True,
+        collapsed=None,
+        top=True,
+        stop_image_kwargs=None,
+    ):
+        """
+        Travel to the shop tab in game.
+        """
+        self.travel(
+            tab="shop",
+            image=self.files["travel_shop_icon"],
             scroll=scroll,
             collapsed=collapsed,
             top=top,
