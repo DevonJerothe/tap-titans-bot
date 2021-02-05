@@ -306,6 +306,7 @@ class Bot(object):
             self.files["travel_equipment_icon"]: "equipment",
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
+            self.files["travel_shop_icon"]: "shop",
         }
 
         # Artifact Data.
@@ -357,6 +358,14 @@ class Bot(object):
         self.close_to_max_ready = False
         self.master_levelled = False
 
+        # Shop Data.
+        # ------------------
+        # "shop_pets_purchase_pets" - Store the configured purchase pets (if any).
+        if self.configuration["shop_pets_purchase_enabled"] and self.configuration["shop_pets_purchase_pets"]:
+            self.shop_pets_purchase_pets = self.configuration["shop_pets_purchase_pets"].split(",")
+        else:
+            self.shop_pets_purchase_pets = None
+
         self.logger.debug(
             "Additional Configurations: Loaded..."
         )
@@ -370,6 +379,7 @@ class Bot(object):
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
+        self.logger.debug("\"shop_pets_purchase_pets\": %s" % self.shop_pets_purchase_pets)
 
     def schedule_functions(self):
         """
@@ -452,6 +462,11 @@ class Bot(object):
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
                 "reset": True,
+            },
+            self.shop_pets: {
+                "enabled": self.configuration["shop_pets_purchase_enabled"],
+                "interval": self.configuration["shop_pets_purchase_interval"],
+                "reset": False,
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
@@ -584,6 +599,10 @@ class Bot(object):
             self.level_heroes: {
                 "enabled": self.configuration["level_heroes_enabled"],
                 "execute": self.configuration["level_heroes_on_start"],
+            },
+            self.shop_pets: {
+                "enabled": self.configuration["shop_pets_purchase_enabled"],
+                "execute": self.configuration["shop_pets_purchase_on_start"],
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
@@ -2008,6 +2027,117 @@ class Bot(object):
         if self.configuration["headgear_swap_enabled"]:
             self._check_headgear()
 
+    def _shop_ensure_prompts_closed(self):
+        """
+        Ensure any prompts or panels open in the shop panel are closed.
+
+        This is important so we don't have any bundles open for extended time.
+        """
+        self.find_and_click_image(
+            image=self.files["small_shop_exit"],
+            region=self.configurations["regions"]["shop_pets"]["small_shop_exit_area"],
+            precision=self.configurations["parameters"]["shop_pets"]["small_shop_exit_precision"],
+            pause=self.configurations["parameters"]["shop_pets"]["small_shop_exit_pause"],
+        )
+
+    def shop_pets(self):
+        """
+        Perform all shop function related to purchasing pets in game.
+        """
+        self.travel_to_shop(
+            stop_image_kwargs={
+                "image": self.files["shop_daily_deals_header"],
+                "precision": self.configurations["parameters"]["shop_pets"]["daily_deals_precision"],
+            },
+        )
+        self.logger.info(
+            "Attempting to purchase pets from the shop..."
+        )
+
+        timeout_shop_pets_search_cnt = 0
+        timeout_shop_pets_search_max = self.configurations["parameters"]["shop_pets"]["timeout_search_daily_deals"]
+
+        try:
+            while not (
+                self.search(
+                    image=self.files["shop_daily_deals_header"],
+                    precision=self.configurations["parameters"]["shop_pets"]["daily_deals_precision"],
+                )[0] and
+                self.search(
+                    image=self.files["shop_chests_header"],
+                    precision=self.configurations["parameters"]["shop_pets"]["chests_precision"],
+                )[0]
+            ):
+                # Looping until both the daily deals and chests headers
+                # are present, since at that point, daily deals are on the screen
+                # to search through.
+                timeout_shop_pets_search_cnt = self.handle_timeout(
+                    count=timeout_shop_pets_search_cnt,
+                    timeout=timeout_shop_pets_search_max,
+                )
+                self.drag(
+                    start=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop_pets"]["slow_drag_pause"],
+                )
+                self._shop_ensure_prompts_closed()
+        except TimeoutError:
+            self.logger.info(
+                "Unable to travel to the daily deals panel in the shop, skipping..."
+            )
+            return
+
+        # At this point we can be sure that the daily deals
+        # panel is open and can be parsed.
+        for pet in self.shop_pets_purchase_pets:
+            found, position, image = self.search(
+                image=self.files["pet_%(pet)s" % {"pet": pet}],
+                precision=self.configurations["parameters"]["shop_pets"]["pet_precision"],
+            )
+            if found:
+                self.logger.info(
+                    "Pet: \"%(pet)s\" found on screen, checking if purchase is possible..." % {
+                        "pet": pet,
+                    }
+                )
+                # Click on the pet, if it hasn't already been purchased, the correct header should
+                # be present on the screen that we can use to purchase.
+                self.click(
+                    point=position,
+                    pause=self.configurations["parameters"]["shop_pets"]["check_purchase_pause"],
+                )
+                # Check for the purchase header now...
+                if self.search(
+                    image=self.files["shop_pet_header"],
+                    region=self.configurations["regions"]["shop_pets"]["shop_pet_header_area"],
+                    precision=self.configurations["parameters"]["shop_pets"]["shop_pet_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Pet: \"%(pet)s\" can be purchased, purchasing now..." % {
+                            "pet": pet,
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["shop_pets"]["purchase_pet"],
+                        pause=self.configurations["parameters"]["shop_pets"]["purchase_pet_pause"],
+                    )
+                    # After buying the pet, we will click on the middle of the screen
+                    # TWICE, we don't want to accidentally click on anything in the shop.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["shop_pets"]["post_purchase_clicks"],
+                        interval=self.configurations["parameters"]["shop_pets"]["post_purchase_interval"],
+                        pause=self.configurations["parameters"]["shop_pets"]["post_purchase_pause"],
+                    )
+                else:
+                    self.logger.info(
+                        "Pet: \"%(pet)s\" can not be purchased, it's likely already been bought, skipping..." % {
+                            "pet": pet,
+                        }
+                    )
+                    self._shop_ensure_prompts_closed()
+        self._shop_ensure_prompts_closed()
+
     def perks(self):
         """
         Perform all perk related functionality in game, using/purchasing perks if enabled.
@@ -3273,30 +3403,31 @@ class Bot(object):
 
             # Tab is open at this point. Perform the collapse, un-collapse functionality
             # before attempting to scroll to the top or bottom of a panel.
-            if collapsed:
-                # We want to "collapse" the panel, check if it's already
-                # collapsed at this point.
-                self.click(
-                    point=self.configurations["points"]["travel"]["collapse"],
-                    pause=self.configurations["parameters"]["travel"]["collapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapsed"],
-                        "region": self.configurations["regions"]["travel"]["collapsed_area"],
-                        "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
-                    },
-                )
-            else:
-                self.click(
-                    point=self.configurations["points"]["travel"]["uncollapse"],
-                    pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapse"],
-                        "region": self.configurations["regions"]["travel"]["collapse_area"],
-                        "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                    },
-                )
+            if collapsed is not None:
+                if collapsed:
+                    # We want to "collapse" the panel, check if it's already
+                    # collapsed at this point.
+                    self.click(
+                        point=self.configurations["points"]["travel"]["collapse"],
+                        pause=self.configurations["parameters"]["travel"]["collapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapsed"],
+                            "region": self.configurations["regions"]["travel"]["collapsed_area"],
+                            "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
+                        },
+                    )
+                else:
+                    self.click(
+                        point=self.configurations["points"]["travel"]["uncollapse"],
+                        pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapse"],
+                            "region": self.configurations["regions"]["travel"]["collapse_area"],
+                            "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+                        },
+                    )
 
             if scroll:
                 scroll_img = self.files.get("travel_%(tab)s_%(scroll_key)s" % {
@@ -3441,6 +3572,25 @@ class Bot(object):
         self.travel(
             tab="artifacts",
             image=self.files["travel_artifacts_icon"] if not self.configuration["abyssal"] else self.files["travel_artifacts_abyssal_icon"],
+            scroll=scroll,
+            collapsed=collapsed,
+            top=top,
+            stop_image_kwargs=stop_image_kwargs,
+        )
+
+    def travel_to_shop(
+        self,
+        scroll=True,
+        collapsed=None,
+        top=True,
+        stop_image_kwargs=None,
+    ):
+        """
+        Travel to the shop tab in game.
+        """
+        self.travel(
+            tab="shop",
+            image=self.files["travel_shop_icon"],
             scroll=scroll,
             collapsed=collapsed,
             top=top,
