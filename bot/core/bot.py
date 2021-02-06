@@ -3287,7 +3287,10 @@ class Bot(object):
                 "Exported data has been loaded successfully..."
             )
         except json.JSONDecodeError:
-            raise ExportContentsException()
+            self.logger.info(
+                "Exported contents could not be parsed, skipping data export..."
+            )
+            return
 
         if not self.export_orig_contents:
             self.export_orig_contents = copy.deepcopy(self.export_contents)
