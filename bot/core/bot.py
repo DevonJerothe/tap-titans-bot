@@ -2494,6 +2494,252 @@ class Bot(object):
             pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
         )
 
+    def _prestige_enchant_artifacts(self):
+        """
+        Handle enchanting artifacts in game following a prestige.
+        """
+        self.travel_to_artifacts(collapsed=False)
+
+        found, position, image = self.search(
+            image=self.files["artifacts_enchant_icon"],
+            region=self.configurations["regions"]["artifacts"]["enchant_icon_area"],
+            precision=self.configurations["parameters"]["artifacts"]["enchant_icon_precision"],
+        )
+        # In case multiple artifacts can be enchanted, looping
+        # until no more enchantments can be performed.
+        if found:
+            self.logger.info(
+                "Attempting to enchant artifacts..."
+            )
+            while True:
+                self.click_image(
+                    image=image,
+                    position=position,
+                    pause=self.configurations["parameters"]["artifacts"]["enchant_click_pause"],
+                )
+                if self.search(
+                        image=self.files["artifacts_enchant_confirm_header"],
+                        region=self.configurations["regions"]["artifacts"]["enchant_confirm_header_area"],
+                        precision=self.configurations["parameters"]["artifacts"]["enchant_confirm_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Enchanting artifact now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["artifacts"]["enchant_confirm_point"],
+                        pause=self.configurations["parameters"]["artifacts"]["enchant_confirm_pause"],
+                    )
+                    # Perform some middle top clicks to close enchantment prompt.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
+                    )
+                # Break if no header is found, no more artifacts can
+                # be enchanted at this point.
+                else:
+                    break
+
+    def _prestige_discover_artifacts(self):
+        """
+         Handle discovering artifacts in game following a prestige.
+         """
+        self.travel_to_artifacts(collapsed=False)
+
+        found, position, image = self.search(
+            image=self.files["artifacts_discover_icon"],
+            region=self.configurations["regions"]["artifacts"]["discover_icon_area"],
+            precision=self.configurations["parameters"]["artifacts"]["discover_icon_precision"],
+        )
+        # In case multiple artifacts can be discovered, looping
+        # until no more discoveries can be performed.
+        if found:
+            self.logger.info(
+                "Attempting to discover artifacts..."
+            )
+            while True:
+                self.click_image(
+                    image=image,
+                    position=position,
+                    pause=self.configurations["parameters"]["artifacts"]["discover_click_pause"],
+                )
+                if self.search(
+                        image=self.files["artifacts_discover_confirm_header"],
+                        region=self.configurations["regions"]["artifacts"]["discover_confirm_header_area"],
+                        precision=self.configurations["parameters"]["artifacts"]["discover_confirm_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Discovering artifact now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["artifacts"]["discover_confirm_point"],
+                        pause=self.configurations["parameters"]["artifacts"]["discover_confirm_pause"],
+                    )
+                    # Perform some middle top clicks to close discovery prompt.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
+                    )
+                    # If the user has enabled the option to also upgrade the newly discovered
+                    # artifact, we'll do that now as well.
+                    if self.configuration["artifacts_discovery_upgrade"]:
+                        self.logger.info(
+                            "Artifact discovery upgrade is enabled, attempting to upgrade the new artifact using the "
+                            "\"%(multiplier)s\" multiplier in game..." % {
+                                "multiplier": self.configuration["artifacts_discovery_upgrade_multiplier"],
+                            }
+                        )
+                        self._artifacts_ensure_multiplier(
+                            multiplier=self.configuration["artifacts_discovery_upgrade_multiplier"],
+                        )
+                        # Just manually clicking on the point since a newly discovered
+                        # artifact will always pop up in the same location.
+                        self.click(
+                            point=self.configurations["points"]["artifacts"]["discovered_artifact"],
+                            pause=self.configurations["parameters"]["artifacts"]["discovered_artifact_pause"],
+                        )
+                # Break if no header is found, no more artifacts can
+                # be discovered at this point.
+                else:
+                    break
+
+    def _prestige_upgrade_artifacts(self):
+        """
+        Handle upgrading artifacts in game following a prestige.
+        """
+        self.logger.info(
+            "Beginning artifacts functionality..."
+        )
+        if self.configuration["artifacts_upgrade_enabled"]:
+            self.travel_to_artifacts(scroll=False, collapsed=False)
+            # Determining if maps are even going to be used
+            # for this artifact upgrade functionality.
+            if not self.mapping_enabled and self.next_artifact_upgrade:
+                self.logger.info(
+                    "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
+                    "the \"BUY Max\" multiplier once."
+                )
+                try:
+                    self._artifacts_ensure_multiplier(
+                        multiplier="max",
+                    )
+                    # Upgrade a single artifact to it's maximum
+                    # one time...
+                    self.travel_to_artifacts(
+                        collapsed=False,
+                        stop_image_kwargs={
+                            "image": self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
+                            "region": self.configurations["regions"]["artifacts"]["search_area"],
+                            "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                        },
+                    )
+                    self._artifacts_upgrade(
+                        artifact=self.next_artifact_upgrade,
+                        multiplier="max",
+                    )
+                    # Update the next artifact that will be upgraded.
+                    # This is done regardless of upgrade state (success/fail).
+                    self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+                    # Exporting our prestige once it's finished and right before
+                    # exporting session data (if enabled).
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": self.next_artifact_upgrade,
+                    })
+                except TimeoutError:
+                    self.logger.info(
+                        "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
+                        "skipping upgrade..." % {
+                            "artifact": self.next_artifact_upgrade,
+                        }
+                    )
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": None,
+                    })
+            else:
+                upgraded_artifacts = []
+                # Mappings are enabled... We'll begin all that functionality here.
+                # We know maps are available, so we'll loop through all of our keys and
+                # and handle the multiplier ordering as needed.
+                for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
+                    multiplier = str(multiplier)
+                    self.logger.info(
+                        "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
+                            "multiplier": multiplier,
+                        }
+                    )
+                    if self.upgrade_map[multiplier]:
+                        count, limit = (
+                            0,
+                            self.upgrade_map[self.upgrade_map_key_limits][multiplier]
+                        )
+                        try:
+                            self._artifacts_ensure_multiplier(
+                                multiplier=multiplier,
+                            )
+                            for artifact in self.upgrade_map[multiplier]:
+                                if limit:
+                                    if count >= int(limit):
+                                        self.logger.info(
+                                            "Mapped artifact upgrade limit (%(limit)s) reached, ending mapped artifact "
+                                            "upgrades early..." % {
+                                                "limit": limit,
+                                            }
+                                        )
+                                        break
+                                try:
+                                    self.travel_to_artifacts(
+                                        collapsed=False,
+                                        stop_image_kwargs={
+                                            "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+                                            "region": self.configurations["regions"]["artifacts"]["search_area"],
+                                            "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                                        },
+                                    )
+                                    self._artifacts_upgrade(
+                                        artifact=artifact,
+                                        multiplier=multiplier,
+                                    )
+                                    upgraded_artifacts.append(
+                                        artifact,
+                                    )
+                                    count += 1
+                                except TimeoutError:
+                                    self.logger.info(
+                                        "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
+                                            "artifact": artifact,
+                                        }
+                                    )
+                        except TimeoutError:
+                            self.logger.info(
+                                "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
+                                    "multiplier": multiplier,
+                                }
+                            )
+                    else:
+                        self.logger.info(
+                            "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
+                                "multiplier": multiplier,
+                            }
+                        )
+                # After artifact upgrades are complete, we'll re shuffle the maps
+                # if it's enabled...
+                if self.configuration["artifacts_shuffle"]:
+                    self.logger.info(
+                        "Shuffling artifacts maps following upgrades..."
+                    )
+                    for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
+                        random.shuffle(self.upgrade_map[key])
+                self.export_prestige(prestige_contents={
+                    "upgradeArtifact": upgraded_artifacts,
+                })
+        else:
+            self.export_prestige(prestige_contents={
+                "upgradeArtifact": None,
+            })
+
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
@@ -2642,303 +2888,16 @@ class Bot(object):
             # Important to handle enchantments/discovery before upgrading
             # artifacts so we can make sure the upgrade doesn't spend all our relics.
             if self.configuration["artifacts_enchantment_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_enchant_icon"],
-                    region=self.configurations["regions"]["artifacts"]["enchant_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["enchant_icon_precision"],
-                )
-                # In case multiple artifacts can be enchanted, looping
-                # until no more enchantments can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to enchant artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["enchant_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_enchant_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["enchant_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["enchant_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Enchanting artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["enchant_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["enchant_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close enchantment prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be enchanted at this point.
-                        else:
-                            break
+                self._prestige_enchant_artifacts()
             if self.configuration["artifacts_discovery_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_discover_icon"],
-                    region=self.configurations["regions"]["artifacts"]["discover_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["discover_icon_precision"],
-                )
-                # In case multiple artifacts can be discovered, looping
-                # until no more discoveries can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to discover artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["discover_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_discover_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["discover_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["discover_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Discovering artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["discover_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["discover_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close discovery prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be discovered at this point.
-                        else:
-                            break
+                self._prestige_discover_artifacts()
             # Artifacts are enabled.
-            self.logger.info(
-                "Beginning artifacts functionality..."
-            )
-            if self.configuration["artifacts_upgrade_enabled"]:
-                self.travel_to_artifacts(scroll=False, collapsed=False)
-                # Determining if maps are even going to be used
-                # for this artifact upgrade functionality.
-                if not self.mapping_enabled and self.next_artifact_upgrade:
-                    self.logger.info(
-                        "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
-                        "the \"BUY Max\" multiplier once."
-                    )
-                    try:
-                        self._artifacts_ensure_multiplier(
-                            multiplier="max",
-                        )
-                        # Upgrade a single artifact to it's maximum
-                        # one time...
-                        self.travel_to_artifacts(
-                            collapsed=False,
-                            stop_image_kwargs={
-                                "image": self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                                "region": self.configurations["regions"]["artifacts"]["search_area"],
-                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
-                            },
-                        )
-                        self._artifacts_upgrade(
-                            artifact=self.next_artifact_upgrade,
-                            multiplier="max",
-                        )
-                        # Update the next artifact that will be upgraded.
-                        # This is done regardless of upgrade state (success/fail).
-                        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
-                        # Exporting our prestige once it's finished and right before
-                        # exporting session data (if enabled).
-                        self.export_prestige(prestige_contents={
-                            "upgradeArtifact": self.next_artifact_upgrade,
-                        })
-                    except TimeoutError:
-                        self.logger.info(
-                            "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
-                            "skipping upgrade..." % {
-                                "artifact": self.next_artifact_upgrade,
-                            }
-                        )
-                        self.export_prestige(prestige_contents={
-                            "upgradeArtifact": None,
-                        })
-                else:
-                    upgraded_artifacts = []
-                    # Mappings are enabled... We'll begin all that functionality here.
-                    # We know maps are available, so we'll loop through all of our keys and
-                    # and handle the multiplier ordering as needed.
-                    for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
-                        multiplier = str(multiplier)
-                        self.logger.info(
-                            "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
-                                "multiplier": multiplier,
-                            }
-                        )
-                        if self.upgrade_map[multiplier]:
-                            count, limit = (
-                                0,
-                                self.upgrade_map[self.upgrade_map_key_limits][multiplier]
-                            )
-                            try:
-                                self._artifacts_ensure_multiplier(
-                                    multiplier=multiplier,
-                                )
-                                for artifact in self.upgrade_map[multiplier]:
-                                    if limit:
-                                        if count >= int(limit):
-                                            self.logger.info(
-                                                "Mapped artifact upgrade limit (%(limit)s) reached, ending mapped artifact "
-                                                "upgrades early..." % {
-                                                    "limit": limit,
-                                                }
-                                            )
-                                            break
-                                    try:
-                                        self.travel_to_artifacts(
-                                            collapsed=False,
-                                            stop_image_kwargs={
-                                                "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
-                                                "region": self.configurations["regions"]["artifacts"]["search_area"],
-                                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
-                                            },
-                                        )
-                                        self._artifacts_upgrade(
-                                            artifact=artifact,
-                                            multiplier=multiplier,
-                                        )
-                                        upgraded_artifacts.append(
-                                            artifact,
-                                        )
-                                        count += 1
-                                    except TimeoutError:
-                                        self.logger.info(
-                                            "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
-                                                "artifact": artifact,
-                                            }
-                                        )
-                            except TimeoutError:
-                                self.logger.info(
-                                    "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
-                                        "multiplier": multiplier,
-                                    }
-                                )
-                        else:
-                            self.logger.info(
-                                "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
-                                    "multiplier": multiplier,
-                                }
-                            )
-                    # After artifact upgrades are complete, we'll re shuffle the maps
-                    # if it's enabled...
-                    if self.configuration["artifacts_shuffle"]:
-                        self.logger.info(
-                            "Shuffling artifacts maps following upgrades..."
-                        )
-                        for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
-                            random.shuffle(self.upgrade_map[key])
-                    self.export_prestige(prestige_contents={
-                        "upgradeArtifact": upgraded_artifacts,
-                    })
-            else:
-                self.export_prestige(prestige_contents={
-                    "upgradeArtifact": None,
-                })
-            if self.configuration["artifacts_enchantment_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_enchant_icon"],
-                    region=self.configurations["regions"]["artifacts"]["enchant_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["enchant_icon_precision"],
-                )
-                # In case multiple artifacts can be enchanted, looping
-                # until no more enchantments can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to enchant artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["enchant_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_enchant_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["enchant_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["enchant_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Enchanting artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["enchant_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["enchant_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close enchantment prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be enchanted at this point.
-                        else:
-                            break
-            if self.configuration["artifacts_discovery_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_discover_icon"],
-                    region=self.configurations["regions"]["artifacts"]["discover_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["discover_icon_precision"],
-                )
-                # In case multiple artifacts can be discovered, looping
-                # until no more discoveries can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to discover artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["discover_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_discover_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["discover_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["discover_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Discovering artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["discover_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["discover_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close discovery prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be discovered at this point.
-                        else:
-                            break
+            self._prestige_upgrade_artifacts()
+        else:
+            self.export_prestige(prestige_contents={
+                "upgradeArtifact": None,
+            })
+
         # Reset the most powerful hero, first subsequent hero levelling
         # should handle this for us again.
         self.powerful_hero = None
@@ -3571,7 +3530,10 @@ class Bot(object):
         """
         self.travel(
             tab="artifacts",
-            image=self.files["travel_artifacts_icon"] if not self.configuration["abyssal"] else self.files["travel_artifacts_abyssal_icon"],
+            image=[
+                self.files["travel_artifacts_icon"],
+                self.files["travel_artifacts_abyssal_icon"],
+            ],
             scroll=scroll,
             collapsed=collapsed,
             top=top,
