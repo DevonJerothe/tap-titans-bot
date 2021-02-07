@@ -108,6 +108,11 @@ class Bot(object):
         # determine whether or not reset safe functions
         # should be determined and modified.
         self.scheduled = False
+        # The last screenshot variable is used to store image objects
+        # that are taken every time game state is checked, if the last
+        # screenshot is ever the same as the current one, the emulator has
+        # most likely frozen.
+        self.last_screenshot = None
 
         self.session = session
         self.license = license_obj
@@ -301,6 +306,7 @@ class Bot(object):
             self.files["travel_equipment_icon"]: "equipment",
             self.files["travel_pets_icon"]: "pets",
             self.files["travel_artifacts_icon"]: "artifacts",
+            self.files["travel_shop_icon"]: "shop",
         }
 
         # Artifact Data.
@@ -308,6 +314,7 @@ class Bot(object):
         # "upgrade_map_keys" - List of keys present in the artifact maps.
         # "upgrade_map_key_unmapped" - The key used to find unmapped artifacts.
         # "upgrade_map_key_ordering" - The key used to determine the order of artifacts.
+        # "upgrade_map_key_limits" - The key used to determine the limits of artifacts.
         # "mapping_enabled" - Whether or not the mapping functionality is enabled.
         # "upgrade_map" - The map containing all artifact options from a configuration.
         # "upgrade_artifacts" - A list of artifacts to upgrade, one at a time, during a session.
@@ -315,6 +322,7 @@ class Bot(object):
         self.upgrade_map_keys = ["1", "5", "25", "max"]
         self.upgrade_map_key_unmapped = "unmapped"
         self.upgrade_map_key_ordering = "percentOrder"
+        self.upgrade_map_key_limits = "mappedLimits"
         self.mapping_enabled = False
         self.upgrade_map = json.loads(self.configuration["artifacts_upgrade_map"])
         self.upgrade_artifacts = None
@@ -350,6 +358,14 @@ class Bot(object):
         self.close_to_max_ready = False
         self.master_levelled = False
 
+        # Shop Data.
+        # ------------------
+        # "shop_pets_purchase_pets" - Store the configured purchase pets (if any).
+        if self.configuration["shop_pets_purchase_enabled"] and self.configuration["shop_pets_purchase_pets"]:
+            self.shop_pets_purchase_pets = self.configuration["shop_pets_purchase_pets"].split(",")
+        else:
+            self.shop_pets_purchase_pets = None
+
         self.logger.debug(
             "Additional Configurations: Loaded..."
         )
@@ -363,6 +379,7 @@ class Bot(object):
         self.logger.debug("\"next_artifact_upgrade\": %s" % self.next_artifact_upgrade)
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
+        self.logger.debug("\"shop_pets_purchase_pets\": %s" % self.shop_pets_purchase_pets)
 
     def schedule_functions(self):
         """
@@ -445,6 +462,11 @@ class Bot(object):
                 "enabled": self.configuration["level_heroes_enabled"],
                 "interval": self.configuration["level_heroes_interval"],
                 "reset": True,
+            },
+            self.shop_pets: {
+                "enabled": self.configuration["shop_pets_purchase_enabled"],
+                "interval": self.configuration["shop_pets_purchase_interval"],
+                "reset": False,
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
@@ -578,6 +600,10 @@ class Bot(object):
                 "enabled": self.configuration["level_heroes_enabled"],
                 "execute": self.configuration["level_heroes_on_start"],
             },
+            self.shop_pets: {
+                "enabled": self.configuration["shop_pets_purchase_enabled"],
+                "execute": self.configuration["shop_pets_purchase_on_start"],
+            },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
                 "execute": self.configuration["perks_on_start"],
@@ -617,14 +643,66 @@ class Bot(object):
         # our timeout after incrementing it by one.
         raise TimeoutError()
 
-    def check_game_state(self):
+    def _check_game_state_reboot(self):
         """
-        Perform a check on the emulator to determine whether or not the game state is no longer
-        in a valid place to derive that the game is still running. The emulator may crash
-        during runtime, we can at least attempt to recover.
+        Reboot the emulator if possible, raising a game state exception if it is not possible.
         """
-        timeout_check_game_state_cnt = 0
-        timeout_check_game_state_max = self.configurations["parameters"]["check_game_state"]["check_game_state_timeout"]
+        self.logger.info(
+            "Unable to handle current game state, attempting to recover and restart application..."
+        )
+        # Attempting to drag the screen and use the emulator screen
+        # directly to travel to the home screen to recover.
+        self.drag(
+            start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
+            end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
+            pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
+        )
+        self.click(
+            point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
+            clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
+            interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
+            pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
+            offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+        )
+        # The home screen should be active and the icon present on screen.
+        found, position, image = self.search(
+            image=self.files["application_icon"],
+            region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
+            precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+        )
+        if found:
+            self.logger.info(
+                "Application icon found, attempting to open game now..."
+            )
+            self.click_image(
+                image=image,
+                position=position,
+                pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
+            )
+            return
+        else:
+            self.logger.info(
+                "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
+                "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
+                "and visible."
+            )
+            self.logger.info(
+                "If the application icon is visible and you're still getting this error, please contact support for "
+                "additional help."
+            )
+            self.logger.info(
+                "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
+                "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
+                "to travel to the home screen."
+            )
+        raise GameStateException()
+
+    def _check_game_state_generic(self):
+        """
+        Handle the generic game state check.
+        """
+        timeout_check_game_state_generic_cnt = 0
+        timeout_check_game_state_generic_max = self.configurations["parameters"]["check_game_state"]["check_game_state_generic_timeout"]
 
         while True:
             # Attempting to travel to the main screen
@@ -635,29 +713,29 @@ class Bot(object):
 
             try:
                 if not self.search(
-                    image=[
-                        # Exit.
-                        self.files["large_exit"],
-                        # Misc.
-                        self.files["fight_boss_icon"],
-                        self.files["leave_boss_icon"],
-                        # Travel Tabs.
-                        self.files["travel_master_icon"],
-                        self.files["travel_heroes_icon"],
-                        self.files["travel_equipment_icon"],
-                        self.files["travel_pets_icon"],
-                        self.files["travel_artifacts_icon"],
-                        # Explicit Game State Images.
-                        self.files["coin_icon"],
-                        self.files["master_icon"],
-                        self.files["relics_icon"],
-                        self.files["options_icon"],
-                    ],
-                    precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+                        image=[
+                            # Exit.
+                            self.files["large_exit"],
+                            # Misc.
+                            self.files["fight_boss_icon"],
+                            self.files["leave_boss_icon"],
+                            # Travel Tabs.
+                            self.files["travel_master_icon"],
+                            self.files["travel_heroes_icon"],
+                            self.files["travel_equipment_icon"],
+                            self.files["travel_pets_icon"],
+                            self.files["travel_artifacts_icon"],
+                            # Explicit Game State Images.
+                            self.files["coin_icon"],
+                            self.files["master_icon"],
+                            self.files["relics_icon"],
+                            self.files["options_icon"],
+                        ],
+                        precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
                 )[0]:
-                    timeout_check_game_state_cnt = self.handle_timeout(
-                        count=timeout_check_game_state_cnt,
-                        timeout=timeout_check_game_state_max,
+                    timeout_check_game_state_generic_cnt = self.handle_timeout(
+                        count=timeout_check_game_state_generic_cnt,
+                        timeout=timeout_check_game_state_generic_max,
                     )
                     # Pause slightly in between our checks...
                     # We don't wanna check too quickly.
@@ -666,55 +744,90 @@ class Bot(object):
                     # Game state is fine, exit with no errors.
                     break
             except TimeoutError:
-                self.logger.info(
-                    "Unable to derive current game state, attempting to recover and restart application..."
+                # Rebooting whenever the generic checks fail
+                # for whatever reason...
+                self._check_game_state_reboot()
+
+    def _check_game_state_fairies(self):
+        """
+        Handle the fairies based game state check.
+        """
+        timeout_check_game_state_fairies_cnt = 0
+        timeout_check_game_state_fairies_max = self.configurations["parameters"]["check_game_state"]["check_game_state_fairies_timeout"]
+
+        try:
+            while self.search(
+                image=self.files["fairies_no_thanks"],
+                region=self.configurations["regions"]["fairies"]["no_thanks_area"],
+                precision=self.configurations["parameters"]["fairies"]["no_thanks_precision"],
+            )[0]:
+                timeout_check_game_state_fairies_cnt = self.handle_timeout(
+                    count=timeout_check_game_state_fairies_cnt,
+                    timeout=timeout_check_game_state_fairies_max,
                 )
-                # Attempting to drag the screen and use the emulator screen
-                # directly to travel to the home screen to recover.
-                self.drag(
-                    start=self.configurations["points"]["check_game_state"]["emulator_drag_start"],
-                    end=self.configurations["points"]["check_game_state"]["emulator_drag_end"],
-                    pause=self.configurations["parameters"]["check_game_state"]["emulator_drag_pause"],
-                )
+                # A fairy is on the screen, since this is a game state check, we're going to
+                # actually decline the ad in this case after clicking on the middle of the screen.
                 self.click(
-                    point=self.configurations["points"]["check_game_state"]["emulator_home_point"],
-                    clicks=self.configurations["parameters"]["check_game_state"]["emulator_home_clicks"],
-                    interval=self.configurations["parameters"]["check_game_state"]["emulator_home_interval"],
-                    pause=self.configurations["parameters"]["check_game_state"]["emulator_home_pause"],
-                    offset=self.configurations["parameters"]["check_game_state"]["emulator_home_offset"],
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["check_game_state"]["fairies_pre_clicks"],
+                    interval=self.configurations["parameters"]["check_game_state"]["fairies_pre_interval"],
+                    pause=self.configurations["parameters"]["check_game_state"]["fairies_pre_pause"],
                 )
-                # The home screen should be active and the icon present on screen.
-                found, position, image = self.search(
-                    image=self.files["application_icon"],
-                    region=self.configurations["regions"]["check_game_state"]["application_icon_search_area"],
-                    precision=self.configurations["parameters"]["check_game_state"]["application_icon_search_precision"],
+                self.find_and_click_image(
+                    image=self.files["fairies_no_thanks"],
+                    region=self.configurations["regions"]["fairies"]["no_thanks_area"],
+                    precision=self.configurations["parameters"]["fairies"]["no_thanks_precision"],
+                    pause=self.configurations["parameters"]["fairies"]["no_thanks_pause"],
                 )
-                if found:
-                    self.logger.info(
-                        "Application icon found, attempting to open game now..."
-                    )
-                    self.click_image(
-                        image=image,
-                        position=position,
-                        pause=self.configurations["parameters"]["check_game_state"]["application_icon_click_pause"],
-                    )
-                    return
-                else:
-                    self.logger.info(
-                        "Unable to find the application icon to handle crash recovery, if your emulator is currently on the "
-                        "home screen, crash recovery is working as intended, please ensure the tap titans icon is available "
-                        "and visible."
-                    )
-                    self.logger.info(
-                        "If the application icon is visible and you're still getting this error, please contact support for "
-                        "additional help."
-                    )
-                    self.logger.info(
-                        "If your game crashed and the home screen wasn't reached through this function, you may need to enable "
-                        "the \"Virtual button on the bottom\" setting in your emulator, this will enable the option for the bot "
-                        "to travel to the home screen."
-                    )
-                raise GameStateException()
+        except TimeoutError:
+            # Reboot if the ad is unable to be closed for some reason
+            # in game, the reboot lets us get a fresh start...
+            self._check_game_state_reboot()
+
+    def _check_game_state_frozen(self):
+        """
+        Handle the frozen emulator based game state check.
+        """
+        if not self.last_screenshot:
+            self.last_screenshot = self.snapshot(
+                region=self.configurations["regions"]["check_game_state"]["frozen_screenshot_area"],
+                pause=self.configurations["parameters"]["check_game_state"]["frozen_screenshot_pause"],
+            )
+        # Comparing the last screenshot available with the current
+        # screenshot of the emulator screen.
+        self.last_screenshot, duplicates = self.duplicates(
+            image=self.last_screenshot,
+            region=self.configurations["regions"]["check_game_state"]["frozen_screenshot_area"],
+            pause_before_check=self.configurations["parameters"]["check_game_state"]["frozen_screenshot_before_pause"],
+        )
+        if duplicates:
+            self._check_game_state_reboot()
+
+    def check_game_state(self):
+        """
+        Perform a check on the emulator to determine whether or not the game state is no longer
+        in a valid place to derive that the game is still running. The emulator may crash
+        during runtime, we can at least attempt to recover.
+        """
+        self.logger.debug(
+            "Checking game state..."
+        )
+
+        # A couple of different methods are used to determine a game state...
+        # Different odd use cases occur within the game that we check for here
+        # and solve through this method.
+
+        # 1. A fairy ad is stuck on the screen...
+        #    This one is odd, but can be solved by clicking on the middle
+        #    of the screen and then trying to collect the ad.
+        self._check_game_state_fairies()
+        # 2. The game has frozen completely, we track this by taking a screenshot of the entire
+        #    screen when we're in here and comparing it to the last one taken each time, if the
+        #    images are the same, we should reboot the game.
+        self._check_game_state_frozen()
+        # 3. The generic game state check, we try to travel to the main game screen
+        #    and then we look for some key images that would mean we are still in the game.
+        self._check_game_state_generic()
 
     def check_license(self):
         """
@@ -765,6 +878,7 @@ class Bot(object):
         self,
         region=None,
         scale=None,
+        pause=0.0
     ):
         """
         Take a snapshot of the current windows screen.
@@ -784,6 +898,10 @@ class Bot(object):
                 snapshot.width * scale,
                 snapshot.height * scale,
             ))
+        if pause:
+            time.sleep(
+                pause
+            )
         return snapshot
 
     def process(
@@ -938,6 +1056,8 @@ class Bot(object):
         self,
         image,
         region=None,
+        pause_before_check=0.0,
+        threshold=10,
     ):
         """
         Check that a given snapshot is the exact same as the current snapshot available.
@@ -949,10 +1069,14 @@ class Bot(object):
             # Force image, false return. The second iteration will now
             # contain our proper image and valid dupe status.
             return image, False
-        latest = self.snapshot(region=region)
+        latest = self.snapshot(
+            region=region,
+            pause=pause_before_check,
+        )
         return latest, compare_images(
             image_one=image,
             image_two=latest,
+            threshold=threshold,
         )
 
     def point_is_color(
@@ -1903,6 +2027,117 @@ class Bot(object):
         if self.configuration["headgear_swap_enabled"]:
             self._check_headgear()
 
+    def _shop_ensure_prompts_closed(self):
+        """
+        Ensure any prompts or panels open in the shop panel are closed.
+
+        This is important so we don't have any bundles open for extended time.
+        """
+        self.find_and_click_image(
+            image=self.files["small_shop_exit"],
+            region=self.configurations["regions"]["shop_pets"]["small_shop_exit_area"],
+            precision=self.configurations["parameters"]["shop_pets"]["small_shop_exit_precision"],
+            pause=self.configurations["parameters"]["shop_pets"]["small_shop_exit_pause"],
+        )
+
+    def shop_pets(self):
+        """
+        Perform all shop function related to purchasing pets in game.
+        """
+        self.travel_to_shop(
+            stop_image_kwargs={
+                "image": self.files["shop_daily_deals_header"],
+                "precision": self.configurations["parameters"]["shop_pets"]["daily_deals_precision"],
+            },
+        )
+        self.logger.info(
+            "Attempting to purchase pets from the shop..."
+        )
+
+        timeout_shop_pets_search_cnt = 0
+        timeout_shop_pets_search_max = self.configurations["parameters"]["shop_pets"]["timeout_search_daily_deals"]
+
+        try:
+            while not (
+                self.search(
+                    image=self.files["shop_daily_deals_header"],
+                    precision=self.configurations["parameters"]["shop_pets"]["daily_deals_precision"],
+                )[0] and
+                self.search(
+                    image=self.files["shop_chests_header"],
+                    precision=self.configurations["parameters"]["shop_pets"]["chests_precision"],
+                )[0]
+            ):
+                # Looping until both the daily deals and chests headers
+                # are present, since at that point, daily deals are on the screen
+                # to search through.
+                timeout_shop_pets_search_cnt = self.handle_timeout(
+                    count=timeout_shop_pets_search_cnt,
+                    timeout=timeout_shop_pets_search_max,
+                )
+                self.drag(
+                    start=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop_pets"]["slow_drag_pause"],
+                )
+                self._shop_ensure_prompts_closed()
+        except TimeoutError:
+            self.logger.info(
+                "Unable to travel to the daily deals panel in the shop, skipping..."
+            )
+            return
+
+        # At this point we can be sure that the daily deals
+        # panel is open and can be parsed.
+        for pet in self.shop_pets_purchase_pets:
+            found, position, image = self.search(
+                image=self.files["pet_%(pet)s" % {"pet": pet}],
+                precision=self.configurations["parameters"]["shop_pets"]["pet_precision"],
+            )
+            if found:
+                self.logger.info(
+                    "Pet: \"%(pet)s\" found on screen, checking if purchase is possible..." % {
+                        "pet": pet,
+                    }
+                )
+                # Click on the pet, if it hasn't already been purchased, the correct header should
+                # be present on the screen that we can use to purchase.
+                self.click(
+                    point=position,
+                    pause=self.configurations["parameters"]["shop_pets"]["check_purchase_pause"],
+                )
+                # Check for the purchase header now...
+                if self.search(
+                    image=self.files["shop_pet_header"],
+                    region=self.configurations["regions"]["shop_pets"]["shop_pet_header_area"],
+                    precision=self.configurations["parameters"]["shop_pets"]["shop_pet_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Pet: \"%(pet)s\" can be purchased, purchasing now..." % {
+                            "pet": pet,
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["shop_pets"]["purchase_pet"],
+                        pause=self.configurations["parameters"]["shop_pets"]["purchase_pet_pause"],
+                    )
+                    # After buying the pet, we will click on the middle of the screen
+                    # TWICE, we don't want to accidentally click on anything in the shop.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["shop_pets"]["post_purchase_clicks"],
+                        interval=self.configurations["parameters"]["shop_pets"]["post_purchase_interval"],
+                        pause=self.configurations["parameters"]["shop_pets"]["post_purchase_pause"],
+                    )
+                else:
+                    self.logger.info(
+                        "Pet: \"%(pet)s\" can not be purchased, it's likely already been bought, skipping..." % {
+                            "pet": pet,
+                        }
+                    )
+                    self._shop_ensure_prompts_closed()
+        self._shop_ensure_prompts_closed()
+
     def perks(self):
         """
         Perform all perk related functionality in game, using/purchasing perks if enabled.
@@ -2259,6 +2494,252 @@ class Bot(object):
             pause=self.configurations["parameters"]["artifacts"]["upgrade_pause"],
         )
 
+    def _prestige_enchant_artifacts(self):
+        """
+        Handle enchanting artifacts in game following a prestige.
+        """
+        self.travel_to_artifacts(collapsed=False)
+
+        found, position, image = self.search(
+            image=self.files["artifacts_enchant_icon"],
+            region=self.configurations["regions"]["artifacts"]["enchant_icon_area"],
+            precision=self.configurations["parameters"]["artifacts"]["enchant_icon_precision"],
+        )
+        # In case multiple artifacts can be enchanted, looping
+        # until no more enchantments can be performed.
+        if found:
+            self.logger.info(
+                "Attempting to enchant artifacts..."
+            )
+            while True:
+                self.click_image(
+                    image=image,
+                    position=position,
+                    pause=self.configurations["parameters"]["artifacts"]["enchant_click_pause"],
+                )
+                if self.search(
+                        image=self.files["artifacts_enchant_confirm_header"],
+                        region=self.configurations["regions"]["artifacts"]["enchant_confirm_header_area"],
+                        precision=self.configurations["parameters"]["artifacts"]["enchant_confirm_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Enchanting artifact now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["artifacts"]["enchant_confirm_point"],
+                        pause=self.configurations["parameters"]["artifacts"]["enchant_confirm_pause"],
+                    )
+                    # Perform some middle top clicks to close enchantment prompt.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
+                    )
+                # Break if no header is found, no more artifacts can
+                # be enchanted at this point.
+                else:
+                    break
+
+    def _prestige_discover_artifacts(self):
+        """
+         Handle discovering artifacts in game following a prestige.
+         """
+        self.travel_to_artifacts(collapsed=False)
+
+        found, position, image = self.search(
+            image=self.files["artifacts_discover_icon"],
+            region=self.configurations["regions"]["artifacts"]["discover_icon_area"],
+            precision=self.configurations["parameters"]["artifacts"]["discover_icon_precision"],
+        )
+        # In case multiple artifacts can be discovered, looping
+        # until no more discoveries can be performed.
+        if found:
+            self.logger.info(
+                "Attempting to discover artifacts..."
+            )
+            while True:
+                self.click_image(
+                    image=image,
+                    position=position,
+                    pause=self.configurations["parameters"]["artifacts"]["discover_click_pause"],
+                )
+                if self.search(
+                        image=self.files["artifacts_discover_confirm_header"],
+                        region=self.configurations["regions"]["artifacts"]["discover_confirm_header_area"],
+                        precision=self.configurations["parameters"]["artifacts"]["discover_confirm_header_precision"],
+                )[0]:
+                    self.logger.info(
+                        "Discovering artifact now..."
+                    )
+                    self.click(
+                        point=self.configurations["points"]["artifacts"]["discover_confirm_point"],
+                        pause=self.configurations["parameters"]["artifacts"]["discover_confirm_pause"],
+                    )
+                    # Perform some middle top clicks to close discovery prompt.
+                    self.click(
+                        point=self.configurations["points"]["main_screen"]["top_middle"],
+                        clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
+                        interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
+                        pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
+                    )
+                    # If the user has enabled the option to also upgrade the newly discovered
+                    # artifact, we'll do that now as well.
+                    if self.configuration["artifacts_discovery_upgrade"]:
+                        self.logger.info(
+                            "Artifact discovery upgrade is enabled, attempting to upgrade the new artifact using the "
+                            "\"%(multiplier)s\" multiplier in game..." % {
+                                "multiplier": self.configuration["artifacts_discovery_upgrade_multiplier"],
+                            }
+                        )
+                        self._artifacts_ensure_multiplier(
+                            multiplier=self.configuration["artifacts_discovery_upgrade_multiplier"],
+                        )
+                        # Just manually clicking on the point since a newly discovered
+                        # artifact will always pop up in the same location.
+                        self.click(
+                            point=self.configurations["points"]["artifacts"]["discovered_artifact"],
+                            pause=self.configurations["parameters"]["artifacts"]["discovered_artifact_pause"],
+                        )
+                # Break if no header is found, no more artifacts can
+                # be discovered at this point.
+                else:
+                    break
+
+    def _prestige_upgrade_artifacts(self):
+        """
+        Handle upgrading artifacts in game following a prestige.
+        """
+        self.logger.info(
+            "Beginning artifacts functionality..."
+        )
+        if self.configuration["artifacts_upgrade_enabled"]:
+            self.travel_to_artifacts(scroll=False, collapsed=False)
+            # Determining if maps are even going to be used
+            # for this artifact upgrade functionality.
+            if not self.mapping_enabled and self.next_artifact_upgrade:
+                self.logger.info(
+                    "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
+                    "the \"BUY Max\" multiplier once."
+                )
+                try:
+                    self._artifacts_ensure_multiplier(
+                        multiplier="max",
+                    )
+                    # Upgrade a single artifact to it's maximum
+                    # one time...
+                    self.travel_to_artifacts(
+                        collapsed=False,
+                        stop_image_kwargs={
+                            "image": self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
+                            "region": self.configurations["regions"]["artifacts"]["search_area"],
+                            "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                        },
+                    )
+                    self._artifacts_upgrade(
+                        artifact=self.next_artifact_upgrade,
+                        multiplier="max",
+                    )
+                    # Update the next artifact that will be upgraded.
+                    # This is done regardless of upgrade state (success/fail).
+                    self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
+                    # Exporting our prestige once it's finished and right before
+                    # exporting session data (if enabled).
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": self.next_artifact_upgrade,
+                    })
+                except TimeoutError:
+                    self.logger.info(
+                        "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
+                        "skipping upgrade..." % {
+                            "artifact": self.next_artifact_upgrade,
+                        }
+                    )
+                    self.export_prestige(prestige_contents={
+                        "upgradeArtifact": None,
+                    })
+            else:
+                upgraded_artifacts = []
+                # Mappings are enabled... We'll begin all that functionality here.
+                # We know maps are available, so we'll loop through all of our keys and
+                # and handle the multiplier ordering as needed.
+                for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
+                    multiplier = str(multiplier)
+                    self.logger.info(
+                        "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
+                            "multiplier": multiplier,
+                        }
+                    )
+                    if self.upgrade_map[multiplier]:
+                        count, limit = (
+                            0,
+                            self.upgrade_map[self.upgrade_map_key_limits][multiplier]
+                        )
+                        try:
+                            self._artifacts_ensure_multiplier(
+                                multiplier=multiplier,
+                            )
+                            for artifact in self.upgrade_map[multiplier]:
+                                if limit:
+                                    if count >= int(limit):
+                                        self.logger.info(
+                                            "Mapped artifact upgrade limit (%(limit)s) reached, ending mapped artifact "
+                                            "upgrades early..." % {
+                                                "limit": limit,
+                                            }
+                                        )
+                                        break
+                                try:
+                                    self.travel_to_artifacts(
+                                        collapsed=False,
+                                        stop_image_kwargs={
+                                            "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
+                                            "region": self.configurations["regions"]["artifacts"]["search_area"],
+                                            "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
+                                        },
+                                    )
+                                    self._artifacts_upgrade(
+                                        artifact=artifact,
+                                        multiplier=multiplier,
+                                    )
+                                    upgraded_artifacts.append(
+                                        artifact,
+                                    )
+                                    count += 1
+                                except TimeoutError:
+                                    self.logger.info(
+                                        "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
+                                            "artifact": artifact,
+                                        }
+                                    )
+                        except TimeoutError:
+                            self.logger.info(
+                                "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
+                                    "multiplier": multiplier,
+                                }
+                            )
+                    else:
+                        self.logger.info(
+                            "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
+                                "multiplier": multiplier,
+                            }
+                        )
+                # After artifact upgrades are complete, we'll re shuffle the maps
+                # if it's enabled...
+                if self.configuration["artifacts_shuffle"]:
+                    self.logger.info(
+                        "Shuffling artifacts maps following upgrades..."
+                    )
+                    for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
+                        random.shuffle(self.upgrade_map[key])
+                self.export_prestige(prestige_contents={
+                    "upgradeArtifact": upgraded_artifacts,
+                })
+        else:
+            self.export_prestige(prestige_contents={
+                "upgradeArtifact": None,
+            })
+
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
@@ -2404,208 +2885,19 @@ class Bot(object):
             # Waiting here through the confirm_confirm_icon_pause for the prestige
             # animation to be finished before moving on...
         if self.configuration["artifacts_enabled"]:
-            # Artifacts are enabled, we'll check for a couple of things,
-            # enchantment/discovery followed by the actual upgrade of
-            # a specified artifact.
-            self.logger.info(
-                "Beginning artifacts functionality..."
-            )
-            if self.configuration["artifacts_upgrade_enabled"]:
-                self.travel_to_artifacts(scroll=False, collapsed=False)
-                # Determining if maps are even going to be used
-                # for this artifact upgrade functionality.
-                if not self.mapping_enabled and self.next_artifact_upgrade:
-                    self.logger.info(
-                        "Artifact upgrade maps are disabled, attempting to upgrade single artifact with "
-                        "the \"BUY Max\" multiplier once."
-                    )
-                    try:
-                        self._artifacts_ensure_multiplier(
-                            multiplier="max",
-                        )
-                        # Upgrade a single artifact to it's maximum
-                        # one time...
-                        self.travel_to_artifacts(
-                            collapsed=False,
-                            stop_image_kwargs={
-                                "image": self.files["artifact_%(artifact)s" % {"artifact": self.next_artifact_upgrade}],
-                                "region": self.configurations["regions"]["artifacts"]["search_area"],
-                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
-                            },
-                        )
-                        self._artifacts_upgrade(
-                            artifact=self.next_artifact_upgrade,
-                            multiplier="max",
-                        )
-                        # Update the next artifact that will be upgraded.
-                        # This is done regardless of upgrade state (success/fail).
-                        self.next_artifact_upgrade = next(self.upgrade_artifacts) if self.upgrade_artifacts else None
-                        # Exporting our prestige once it's finished and right before
-                        # exporting session data (if enabled).
-                        self.export_prestige(prestige_contents={
-                            "upgradeArtifact": self.next_artifact_upgrade,
-                        })
-                    except TimeoutError:
-                        self.logger.info(
-                            "Artifact: %(artifact)s could not be found on the screen, or the \"BUY Max\" option could not be enabled, "
-                            "skipping upgrade..." % {
-                                "artifact": self.next_artifact_upgrade,
-                            }
-                        )
-                        self.export_prestige(prestige_contents={
-                            "upgradeArtifact": None,
-                        })
-                else:
-                    upgraded_artifacts = []
-                    # Mappings are enabled... We'll begin all that functionality here.
-                    # We know maps are available, so we'll loop through all of our keys and
-                    # and handle the multiplier ordering as needed.
-                    for multiplier in self.upgrade_map[self.upgrade_map_key_ordering]:
-                        multiplier = str(multiplier)
-                        self.logger.info(
-                            "Attempting to upgrade artifacts mapped to the %(multiplier)s multiplier..." % {
-                                "multiplier": multiplier,
-                            }
-                        )
-                        if self.upgrade_map[multiplier]:
-                            try:
-                                self._artifacts_ensure_multiplier(
-                                    multiplier=multiplier,
-                                )
-                                for artifact in self.upgrade_map[multiplier]:
-                                    try:
-                                        self.travel_to_artifacts(
-                                            collapsed=False,
-                                            stop_image_kwargs={
-                                                "image": self.files["artifact_%(artifact)s" % {"artifact": artifact}],
-                                                "region": self.configurations["regions"]["artifacts"]["search_area"],
-                                                "precision": self.configurations["parameters"]["artifacts"]["search_precision"],
-                                            },
-                                        )
-                                        self._artifacts_upgrade(
-                                            artifact=artifact,
-                                            multiplier=multiplier,
-                                        )
-                                        upgraded_artifacts.append(
-                                            artifact,
-                                        )
-                                    except TimeoutError:
-                                        self.logger.info(
-                                            "Artifact: %(artifact)s could not be found on the screen, skipping upgrade..." % {
-                                                "artifact": artifact,
-                                            }
-                                        )
-                                # After artifact upgrades are complete, we'll re shuffle the maps
-                                # if it's enabled...
-                                if self.configuration["artifacts_shuffle"]:
-                                    self.logger.info(
-                                        "Shuffling artifacts maps following upgrades..."
-                                    )
-                                    for key in self.upgrade_map_keys + [self.upgrade_map_key_unmapped]:
-                                        random.shuffle(self.upgrade_map[key])
-                            except TimeoutError:
-                                self.logger.info(
-                                    "The \"%(multiplier)s\" option could not be enabled, skipping upgrade..." % {
-                                        "multiplier": multiplier,
-                                    }
-                                )
-                        else:
-                            self.logger.info(
-                                "No artifacts are currently mapped to the %(multiplier)s multiplier, skipping..." % {
-                                    "multiplier": multiplier,
-                                }
-                            )
-                    self.export_prestige(prestige_contents={
-                        "upgradeArtifact": upgraded_artifacts,
-                    })
-            else:
-                self.export_prestige(prestige_contents={
-                    "upgradeArtifact": None,
-                })
+            # Important to handle enchantments/discovery before upgrading
+            # artifacts so we can make sure the upgrade doesn't spend all our relics.
             if self.configuration["artifacts_enchantment_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_enchant_icon"],
-                    region=self.configurations["regions"]["artifacts"]["enchant_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["enchant_icon_precision"],
-                )
-                # In case multiple artifacts can be enchanted, looping
-                # until no more enchantments can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to enchant artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["enchant_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_enchant_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["enchant_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["enchant_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Enchanting artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["enchant_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["enchant_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close enchantment prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be enchanted at this point.
-                        else:
-                            break
+                self._prestige_enchant_artifacts()
             if self.configuration["artifacts_discovery_enabled"]:
-                self.travel_to_artifacts(collapsed=False)
-                found, position, image = self.search(
-                    image=self.files["artifacts_discover_icon"],
-                    region=self.configurations["regions"]["artifacts"]["discover_icon_area"],
-                    precision=self.configurations["parameters"]["artifacts"]["discover_icon_precision"],
-                )
-                # In case multiple artifacts can be discovered, looping
-                # until no more discoveries can be performed.
-                if found:
-                    self.logger.info(
-                        "Attempting to discover artifacts..."
-                    )
-                    while True:
-                        self.click_image(
-                            image=image,
-                            position=position,
-                            pause=self.configurations["parameters"]["artifacts"]["discover_click_pause"],
-                        )
-                        if self.search(
-                            image=self.files["artifacts_discover_confirm_header"],
-                            region=self.configurations["regions"]["artifacts"]["discover_confirm_header_area"],
-                            precision=self.configurations["parameters"]["artifacts"]["discover_confirm_header_precision"],
-                        )[0]:
-                            self.logger.info(
-                                "Discovering artifact now..."
-                            )
-                            self.click(
-                                point=self.configurations["points"]["artifacts"]["discover_confirm_point"],
-                                pause=self.configurations["parameters"]["artifacts"]["discover_confirm_pause"],
-                            )
-                            # Perform some middle top clicks to close discovery prompt.
-                            self.click(
-                                point=self.configurations["points"]["main_screen"]["top_middle"],
-                                clicks=self.configurations["parameters"]["artifacts"]["post_collect_clicks"],
-                                interval=self.configurations["parameters"]["artifacts"]["post_collect_interval"],
-                                pause=self.configurations["parameters"]["artifacts"]["post_collect_pause"],
-                            )
-                        # Break if no header is found, no more artifacts can
-                        # be discovered at this point.
-                        else:
-                            break
+                self._prestige_discover_artifacts()
+            # Artifacts are enabled.
+            self._prestige_upgrade_artifacts()
+        else:
+            self.export_prestige(prestige_contents={
+                "upgradeArtifact": None,
+            })
+
         # Reset the most powerful hero, first subsequent hero levelling
         # should handle this for us again.
         self.powerful_hero = None
@@ -2995,7 +3287,10 @@ class Bot(object):
                 "Exported data has been loaded successfully..."
             )
         except json.JSONDecodeError:
-            raise ExportContentsException()
+            self.logger.info(
+                "Exported contents could not be parsed, skipping data export..."
+            )
+            return
 
         if not self.export_orig_contents:
             self.export_orig_contents = copy.deepcopy(self.export_contents)
@@ -3070,30 +3365,31 @@ class Bot(object):
 
             # Tab is open at this point. Perform the collapse, un-collapse functionality
             # before attempting to scroll to the top or bottom of a panel.
-            if collapsed:
-                # We want to "collapse" the panel, check if it's already
-                # collapsed at this point.
-                self.click(
-                    point=self.configurations["points"]["travel"]["collapse"],
-                    pause=self.configurations["parameters"]["travel"]["collapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapsed"],
-                        "region": self.configurations["regions"]["travel"]["collapsed_area"],
-                        "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
-                    },
-                )
-            else:
-                self.click(
-                    point=self.configurations["points"]["travel"]["uncollapse"],
-                    pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
-                    timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
-                    timeout_search_kwargs={
-                        "image": self.files["travel_collapse"],
-                        "region": self.configurations["regions"]["travel"]["collapse_area"],
-                        "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
-                    },
-                )
+            if collapsed is not None:
+                if collapsed:
+                    # We want to "collapse" the panel, check if it's already
+                    # collapsed at this point.
+                    self.click(
+                        point=self.configurations["points"]["travel"]["collapse"],
+                        pause=self.configurations["parameters"]["travel"]["collapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapsed"],
+                            "region": self.configurations["regions"]["travel"]["collapsed_area"],
+                            "precision": self.configurations["parameters"]["travel"]["collapse_precision"],
+                        },
+                    )
+                else:
+                    self.click(
+                        point=self.configurations["points"]["travel"]["uncollapse"],
+                        pause=self.configurations["parameters"]["travel"]["uncollapse_pause"],
+                        timeout=self.configurations["parameters"]["travel"]["timeout_collapse"],
+                        timeout_search_kwargs={
+                            "image": self.files["travel_collapse"],
+                            "region": self.configurations["regions"]["travel"]["collapse_area"],
+                            "precision": self.configurations["parameters"]["travel"]["uncollapse_precision"],
+                        },
+                    )
 
             if scroll:
                 scroll_img = self.files.get("travel_%(tab)s_%(scroll_key)s" % {
@@ -3237,7 +3533,29 @@ class Bot(object):
         """
         self.travel(
             tab="artifacts",
-            image=self.files["travel_artifacts_icon"] if not self.configuration["abyssal"] else self.files["travel_artifacts_abyssal_icon"],
+            image=[
+                self.files["travel_artifacts_icon"],
+                self.files["travel_artifacts_abyssal_icon"],
+            ],
+            scroll=scroll,
+            collapsed=collapsed,
+            top=top,
+            stop_image_kwargs=stop_image_kwargs,
+        )
+
+    def travel_to_shop(
+        self,
+        scroll=True,
+        collapsed=None,
+        top=True,
+        stop_image_kwargs=None,
+    ):
+        """
+        Travel to the shop tab in game.
+        """
+        self.travel(
+            tab="shop",
+            image=self.files["travel_shop_icon"],
             scroll=scroll,
             collapsed=collapsed,
             top=top,
@@ -3248,26 +3566,41 @@ class Bot(object):
         """
         Travel to the main game screen (no tabs open) in game.
         """
+        timeout_travel_to_main_screen_cnt = 0
+        timeout_travel_to_main_screen_max = self.configurations["parameters"]["travel"]["timeout_travel_main_screen"]
+
         while True:
-            found, position, image = self.search(
-                image=[file for file in self.image_tabs.keys()],
-                region=self.configurations["regions"]["travel"]["search_area"],
-                precision=self.configurations["parameters"]["travel"]["precision"],
-            )
-            if found:
-                tab = self.image_tabs[image]
-                self.logger.debug(
-                    "It looks like the %(tab)s tab is open, attempting to close..." % {
-                        "tab": tab,
-                    }
+            try:
+                timeout_travel_to_main_screen_cnt = self.handle_timeout(
+                    count=timeout_travel_to_main_screen_cnt,
+                    timeout=timeout_travel_to_main_screen_max
                 )
-                self.click(
-                    point=self.configurations["points"]["travel"]["tabs"][tab],
-                    pause=self.configurations["parameters"]["travel"]["click_pause"],
+                found, position, image = self.search(
+                    image=[file for file in self.image_tabs.keys()],
+                    region=self.configurations["regions"]["travel"]["search_area"],
+                    precision=self.configurations["parameters"]["travel"]["precision"],
                 )
-            else:
-                # If nothing is found now... We can safely just
-                # assume that no tabs are open, breaking!
+                if found:
+                    tab = self.image_tabs[image]
+                    self.logger.debug(
+                        "It looks like the %(tab)s tab is open, attempting to close..." % {
+                            "tab": tab,
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["travel"]["tabs"][tab],
+                        pause=self.configurations["parameters"]["travel"]["click_pause"],
+                    )
+                else:
+                    # If nothing is found now... We can safely just
+                    # assume that no tabs are open, breaking!
+                    break
+            # If a timeout error does occur, we'll continue to run, whatever is blocking us here
+            # will likely be caught later on.
+            except TimeoutError:
+                self.logger.info(
+                    "Unable to travel to the main screen in game, skipping..."
+                )
                 break
 
     def export_session(self, export_contents=None, original_contents=None, extra={}):
@@ -3342,6 +3675,11 @@ class Bot(object):
                     if self.pause_func():
                         if not self.pause_date:
                             self.pause_date = datetime.datetime.now()
+                            self.toast_func(
+                                title="Session",
+                                message="Session Paused Successfully...",
+                                duration=5,
+                            )
                         # Currently paused through the GUI.
                         # Just wait and sleep slightly in between checks.
                         if self.stream.last_message != "Paused...":

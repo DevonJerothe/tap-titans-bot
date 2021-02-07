@@ -15,7 +15,7 @@ def mse(image_one, image_two):
     return err
 
 
-def compare_images(image_one, image_two, threshold=10):
+def compare_images(image_one, image_two, threshold):
     """
     Compare two given images, determine if they are the same images.
     """
