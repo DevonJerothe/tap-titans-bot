@@ -2085,6 +2085,9 @@ class Bot(object):
             self.logger.info(
                 "Unable to travel to the daily deals panel in the shop, skipping..."
             )
+            # Always travel to the main screen following execution
+            # so we don't linger on this panel.
+            self.travel_to_main_screen()
             return
 
         # At this point we can be sure that the daily deals
@@ -2137,6 +2140,9 @@ class Bot(object):
                     )
                     self._shop_ensure_prompts_closed()
         self._shop_ensure_prompts_closed()
+        # Always travel to the main screen following execution
+        # so we don't linger on this panel.
+        self.travel_to_main_screen()
 
     def perks(self):
         """
