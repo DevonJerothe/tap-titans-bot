@@ -340,8 +340,7 @@ class GUI(object):
                 self.menu_entry(text=MENU_LOCAL_SETTINGS),
                 [
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
-                                    disabled=not self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_enable_toast_notifications()),
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
