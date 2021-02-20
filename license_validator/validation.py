@@ -1,4 +1,5 @@
 from license_validator.settings import (
+    VALIDATION_EXECUTABLE_NAME,
     VALIDATION_NAME,
     VALIDATION_IDENTIFIER_SECRET,
     VALIDATION_URL,
@@ -60,6 +61,7 @@ class LicenseValidator(object):
         needed to validate certain things may not be present on initialization, that will properly
         update an attribute that we can use to determine our conditional paths.
         """
+        self.program_executable = VALIDATION_EXECUTABLE_NAME
         self.program_name = VALIDATION_NAME
         self.program_identifier = VALIDATION_IDENTIFIER_SECRET
         self.program_url = VALIDATION_URL

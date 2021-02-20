@@ -1,7 +1,11 @@
 from pathlib import Path
 from os import path
 
-
+# Validation Executable Name.
+# This is purely used when dealing with auto
+# updates, all application instances should use
+# this name for their executable though.
+VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # Validation Config Name.
 # Since this module is reusable, you can use this
 # to ensure different local directories are created
