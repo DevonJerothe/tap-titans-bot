@@ -18,6 +18,7 @@ from gui.settings import (
     MENU_PAUSE_SESSION,
     MENU_UPDATE_LICENSE,
     MENU_TOOLS,
+    MENU_TOOLS_CHECK_FOR_UPDATES,
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
@@ -109,6 +110,7 @@ class GUI(object):
             MENU_PAUSE_SESSION: self.pause_session,
             MENU_SETTINGS_VIEW_CONFIGURATIONS: self.settings_view_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
+            MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
@@ -322,6 +324,8 @@ class GUI(object):
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_TOOLS),
                 [
+                    self.menu_entry(text=MENU_TOOLS_CHECK_FOR_UPDATES),
+                    self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_TOOLS_LOCAL_DATA),
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_UPDATE_LICENSE),
@@ -570,6 +574,19 @@ class GUI(object):
             license_file=self.license.program_license_file,
             text=text,
         )
+
+    def tools_check_for_updates(self):
+        """
+        "tools_check_for_updates" functionality.
+        """
+        self.logger.info(
+            "Checking For Updates..."
+        )
+        self.toast(
+            title="Updates",
+            message="Checking For Updates...",
+        )
+        self.handle_auto_updates()
 
     def tools_local_data(self):
         """
