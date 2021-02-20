@@ -70,6 +70,10 @@ VALIDATION_PRESTIGE_URL = "%(validation_licenses_url)s/%(prestige_endpoint)s" % 
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "prestige_endpoint": "session/prestige",
 }
+VALIDATION_VERSIONS_URL = "%(validation_licenses_url)s/%(versions_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "versions_endpoint": "version/check",
+}
 # Build paths inside our project like this: BASE_DIRECTORY / "subdir".
 PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
 # The user directory and our validation name value is used
