@@ -156,7 +156,8 @@ class Bot(object):
                 )
             except LicenseRetrievalError:
                 self.logger.info(
-                    "Invalid license entered. Double check your license and please try again."
+                    "Invalid license entered. Double check your license and please try again. This could also be caused when you are "
+                    "using an older version of the application."
                 )
                 raise
             except LicenseExpirationError as err:
