@@ -1,14 +1,18 @@
 from pathlib import Path
 from os import path
 
-
+# Validation Executable Name.
+# This is purely used when dealing with auto
+# updates, all application instances should use
+# this name for their executable though.
+VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # Validation Config Name.
 # Since this module is reusable, you can use this
 # to ensure different local directories are created
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "zM$bNc4wP.AXcH%{K"
+VALIDATION_IDENTIFIER_SECRET = "4MYAPMc4MYPMXc%{_o"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
@@ -69,6 +73,10 @@ VALIDATION_SESSION_URL = "%(validation_licenses_url)s/%(session_endpoint)s" % {
 VALIDATION_PRESTIGE_URL = "%(validation_licenses_url)s/%(prestige_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "prestige_endpoint": "session/prestige",
+}
+VALIDATION_VERSIONS_URL = "%(validation_licenses_url)s/%(versions_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "versions_endpoint": "version/check",
 }
 # Build paths inside our project like this: BASE_DIRECTORY / "subdir".
 PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent

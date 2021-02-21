@@ -1,4 +1,5 @@
 from license_validator.settings import (
+    VALIDATION_EXECUTABLE_NAME,
     VALIDATION_NAME,
     VALIDATION_IDENTIFIER_SECRET,
     VALIDATION_URL,
@@ -14,6 +15,7 @@ from license_validator.settings import (
     VALIDATION_FLUSH_URL,
     VALIDATION_SESSION_URL,
     VALIDATION_PRESTIGE_URL,
+    VALIDATION_VERSIONS_URL,
     LOCAL_DATA_DIRECTORY,
     LOCAL_DATA_FILE_DIRECTORY,
     LOCAL_DATA_DEPENDENCY_DIRECTORY,
@@ -37,8 +39,10 @@ from license_validator.exceptions import (
     LicenseIntegrityError,
 )
 
+from zipfile import ZipFile
 from requests_futures.sessions import FuturesSession
 
+import io
 import os
 import json
 import requests
@@ -57,6 +61,7 @@ class LicenseValidator(object):
         needed to validate certain things may not be present on initialization, that will properly
         update an attribute that we can use to determine our conditional paths.
         """
+        self.program_executable = VALIDATION_EXECUTABLE_NAME
         self.program_name = VALIDATION_NAME
         self.program_identifier = VALIDATION_IDENTIFIER_SECRET
         self.program_url = VALIDATION_URL
@@ -74,6 +79,7 @@ class LicenseValidator(object):
         self.program_flush_url = VALIDATION_FLUSH_URL
         self.program_export_session_url = VALIDATION_SESSION_URL
         self.program_export_prestige_url = VALIDATION_PRESTIGE_URL
+        self.program_check_versions_url = VALIDATION_VERSIONS_URL
 
         self.program_directory = LOCAL_DATA_DIRECTORY
         self.program_file_directory = LOCAL_DATA_FILE_DIRECTORY
@@ -303,6 +309,31 @@ class LicenseValidator(object):
             },
         )
 
+    def collect_version(self, version, version_url, location):
+        """
+        Collect the specified version into the local data directory updates directory.
+
+        We also handle some stale data checking here, and make sure the current executable
+        is overwritten with the unarchived version downloaded.
+        """
+        # We'll extract everything to a the specified location
+        # once the newest version has been downloaded...
+        executable = os.path.join(
+            location,
+            self.program_executable,
+        )
+        response = requests.get(
+            url=version_url,
+        ).content
+
+        if os.path.isfile(path=executable):
+            os.remove(path=executable)
+
+        zipped = ZipFile(io.BytesIO(response))
+        zipped.extractall(path=location)
+
+        return executable
+
     def online(self):
         """
         Set the current license to an online state.
@@ -372,6 +403,19 @@ class LicenseValidator(object):
             url=self.program_export_prestige_url,
             data={
                 "prestige_contents": json.dumps(prestige_contents),
+                **self.program_data(),
+            },
+        )
+
+    def check_versions(self, version):
+        """
+        Request the current versions available for the application, the current
+        version is passed through to determine if an update is available.
+        """
+        return self._post(
+            url=self.program_check_versions_url,
+            data={
+                "version": version,
                 **self.program_data(),
             },
         )

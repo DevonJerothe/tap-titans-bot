@@ -18,6 +18,7 @@ from gui.settings import (
     MENU_PAUSE_SESSION,
     MENU_UPDATE_LICENSE,
     MENU_TOOLS,
+    MENU_TOOLS_CHECK_FOR_UPDATES,
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
@@ -109,6 +110,7 @@ class GUI(object):
             MENU_PAUSE_SESSION: self.pause_session,
             MENU_SETTINGS_VIEW_CONFIGURATIONS: self.settings_view_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
+            MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
@@ -122,6 +124,105 @@ class GUI(object):
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
         }
+
+    def handle_auto_updates(self):
+        """
+        Handle auto updates of the application.
+        """
+        if not self.license.license_available:
+            return
+
+        self.logger.info(
+            "Checking for application updates..."
+        )
+        # Check to see if any new versions are available...
+        # We would expect to handle this on application startup.
+        try:
+            check_response = self.license.check_versions(version=self.application_version)
+            check_response = check_response.json()
+            # Depending on the status of our response, this will either tell
+            # us to download the newest version, or just continue.
+            if check_response["status"] == "requires_update":
+                self.logger.info(
+                    "Your current application version (%(current)s) is behind the newest version (%(newest)s), "
+                    "you can use the prompt to automatically update to the newest version now..." % {
+                        "current": self.application_version,
+                        "newest": check_response["version"],
+                    }
+                )
+                confirm = self.yes_no_popup(
+                    "A newer version is available, would you like to update from version %(current)s to "
+                    "version %(newest)s?" % {
+                        "current": self.application_version,
+                        "newest": check_response["version"],
+                    },
+                )
+                if confirm:
+                    # If the user has decided that they want to update
+                    # their application, we also want to determine where to
+                    # put the newest version...
+                    location = self.folder_popup(
+                        message="Choose Installation Directory",
+                        title="Choose Install Directory",
+                    )
+                    if location:
+                        self.logger.info(
+                            "Attempting to download the newest application version (%(newest)s) now..." % {
+                                "newest": check_response["version"],
+                            }
+                        )
+                        self.logger.info(
+                            "The application will be installed into the following location: \"%(location)s\"..." % {
+                                "location": location,
+                            }
+                        )
+                        self.logger.info(
+                            "Downloading..."
+                        )
+                        # Handle the downloading of the newest version into our
+                        # data directory and overwrite the original executable
+                        # with it...
+                        try:
+                            executable = self.license.collect_version(
+                                version=check_response["version"],
+                                version_url=check_response["url"],
+                                location=location,
+                            )
+                            self.logger.info(
+                                "Newest version was successfully retrieved and downloaded, you can safely restart your application now using "
+                                "the newest .exe file available here: \"%(executable)s\"... Your current application may not work correctly "
+                                "until you have restarted the application..." % {
+                                    "executable": executable,
+                                }
+                            )
+                        except Exception:
+                            self.logger.info(
+                                "An error occurred while trying to download the newest version of the "
+                                "application, skipping... You can download the newest version manually using "
+                                "this link: %(download)s" % {
+                                    "download": check_response["url"],
+                                }
+                            )
+                    else:
+                        self.logger.info(
+                            "No location was chosen, skipping..."
+                        )
+                else:
+                    self.logger.info(
+                        "Skipping application auto updates... The application may not work properly until you've updated to the "
+                        "newest version..."
+                    )
+            if check_response["status"] == "success":
+                self.logger.info(
+                    "Application is up to date..."
+                )
+        # Broad exception case will just log some information and
+        # updates are skipped...
+        except Exception:
+            self.logger.info(
+                "An error occurred while trying to check version for auto "
+                "updating, skipping..."
+            )
 
     @property
     def menu_title(self):
@@ -165,8 +266,19 @@ class GUI(object):
         """
         return sg.PopupYesNo(
             text,
-            icon=ICON_FILE
+            icon=ICON_FILE,
         ) == "Yes"
+
+    @staticmethod
+    def folder_popup(message, title):
+        """
+        Generate and display a popup box that displays some text and asks for a directory/location.
+        """
+        return sg.PopupGetFolder(
+            message=message,
+            title=title,
+            icon=ICON_FILE,
+        )
 
     def text_input_popup(self, message, title, size=None, default_text=None, icon=None):
         """
@@ -212,6 +324,8 @@ class GUI(object):
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_TOOLS),
                 [
+                    self.menu_entry(text=MENU_TOOLS_CHECK_FOR_UPDATES),
+                    self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_TOOLS_LOCAL_DATA),
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_UPDATE_LICENSE),
@@ -226,8 +340,7 @@ class GUI(object):
                 self.menu_entry(text=MENU_LOCAL_SETTINGS),
                 [
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
-                                    disabled=not self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_enable_toast_notifications()),
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
                     self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
@@ -461,6 +574,19 @@ class GUI(object):
             text=text,
         )
 
+    def tools_check_for_updates(self):
+        """
+        "tools_check_for_updates" functionality.
+        """
+        self.logger.info(
+            "Checking For Updates..."
+        )
+        self.toast(
+            title="Updates",
+            message="Checking For Updates...",
+        )
+        self.handle_auto_updates()
+
     def tools_local_data(self):
         """
         "tools_local_data" functionality.
@@ -649,11 +775,14 @@ class GUI(object):
         """
         Begin main runtime loop for application.
         """
+        self.handle_auto_updates()
+
         try:
             self.logger.info("===================================================================================")
             self.logger.info(
-                "%(application_name)s GUI Initialized..." % {
+                "%(application_name)s GUI (v%(version)s) Initialized..." % {
                     "application_name": self.application_name,
+                    "version": self.application_version,
                 }
             )
             self.logger.info(
