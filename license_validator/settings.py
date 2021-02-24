@@ -12,7 +12,7 @@ VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "4MYAPMc4MYPMXc%{_o"
+VALIDATION_IDENTIFIER_SECRET = "msosjmc1{_oPcjaol"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
@@ -46,6 +46,12 @@ VALIDATION_FILES_CHECK_URL = "%(validation_licenses_url)s/%(files_check_endpoint
 VALIDATION_FILES_RETRIEVE_URL = "%(validation_licenses_url)s/%(files_retrieve_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "files_retrieve_endpoint": "files/retrieve",
+}
+# Syncing files will allow us to check which files are actually
+# available from the server, syncing stale files will delete them.
+VALIDATION_FILES_SYNC_URL = "%(validation_licenses_url)s/%(files_sync_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "files_sync_endpoint": "files/sync",
 }
 
 VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
