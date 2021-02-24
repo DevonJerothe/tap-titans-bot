@@ -9,6 +9,7 @@ from license_validator.settings import (
     VALIDATION_DEPENDENCIES_RETRIEVE_URL,
     VALIDATION_FILES_CHECK_URL,
     VALIDATION_FILES_RETRIEVE_URL,
+    VALIDATION_FILES_SYNC_URL,
     VALIDATION_LICENSE_RETRIEVE_URL,
     VALIDATION_ONLINE_URL,
     VALIDATION_OFFLINE_URL,
@@ -27,6 +28,7 @@ from license_validator.settings import (
 from license_validator.utilities import (
     get_license,
     set_file,
+    sync_file,
     set_dependency,
     changed_contents,
     chunks,
@@ -71,6 +73,7 @@ class LicenseValidator(object):
 
         self.program_files_check_url = VALIDATION_FILES_CHECK_URL
         self.program_files_retrieve_url = VALIDATION_FILES_RETRIEVE_URL
+        self.program_files_sync_url = VALIDATION_FILES_SYNC_URL
 
         self.license_retrieve_url = VALIDATION_LICENSE_RETRIEVE_URL
 
@@ -248,6 +251,34 @@ class LicenseValidator(object):
                 "Done..."
             )
 
+    def _sync(
+        self,
+        logger,
+        sync_url,
+    ):
+        logger.info(
+            "Syncing stale files..."
+        )
+        for version in os.scandir(self.program_file_directory):
+            # For each versioned files actually present, we check
+            # each once against the authoritative truth from the server...
+            authority = self._post(
+                url=sync_url,
+                data={
+                    **self.program_data(),
+                    **{
+                        "version": version.name,
+                    }
+                },
+            ).json()
+
+            for file in os.scandir(version):
+                sync_file(
+                    instance=file,
+                    instances=authority["program_files"],
+                    logger=logger,
+                )
+
     def collect_license_data(self):
         """
         Perform license data collection, only grabbing relevant license information and
@@ -307,6 +338,12 @@ class LicenseValidator(object):
                     directory=self.program_file_directory,
                 )),
             },
+        )
+        # Handle syncing of managed files.
+        # Syncing will remove any stale files (files that are no longer associated with a program).
+        self._sync(
+            logger=logger,
+            sync_url=self.program_files_sync_url,
         )
 
     def collect_version(self, version, version_url, location):

@@ -77,6 +77,25 @@ def set_file(
             f.write(base64.b64decode(instance["content"]))
 
 
+def sync_file(
+    instance,
+    instances,
+    logger=None,
+):
+    """
+    Sync the file instance so it's removed from any version directories if it's no longer within the actual set of
+    program files available.
+    """
+    if instance.name not in instances:
+        if logger:
+            logger.info(
+                "Deleting stale file: \"%(file_path)s\"..." % {
+                    "file_path": instance.path,
+                }
+            )
+            os.remove(instance)
+
+
 def set_dependency(
     instance,
     dependency_directory,
