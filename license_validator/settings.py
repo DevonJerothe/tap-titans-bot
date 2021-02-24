@@ -47,6 +47,12 @@ VALIDATION_FILES_RETRIEVE_URL = "%(validation_licenses_url)s/%(files_retrieve_en
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "files_retrieve_endpoint": "files/retrieve",
 }
+# Syncing files will allow us to check which files are actually
+# available from the server, syncing stale files will delete them.
+VALIDATION_FILES_SYNC_URL = "%(validation_licenses_url)s/%(files_sync_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "files_sync_endpoint": "files/sync",
+}
 
 VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
