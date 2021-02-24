@@ -1896,12 +1896,14 @@ class Bot(object):
             # notification has disappeared.
             time.sleep(self.configurations["parameters"]["headgear_swap"]["headgear_swap_wait_pause"])
 
+        check_index = self.configuration["headgear_swap_check_hero_index"]
+
         for typ in [
             "ranged", "melee", "spell",
         ]:
             if self.search(
                 image=self.files["%(typ)s_icon" % {"typ": typ}],
-                region=self.configurations["regions"]["headgear_swap"]["type_icon_area"],
+                region=self.configurations["regions"]["headgear_swap"]["type_icon_areas"][check_index],
                 precision=self.configurations["parameters"]["headgear_swap"]["type_icon_precision"],
             )[0]:
                 if self.powerful_hero == typ:
