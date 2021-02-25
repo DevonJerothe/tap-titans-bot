@@ -48,6 +48,7 @@ from bot.core.bot import (
 )
 
 import PySimpleGUIWx as sg
+import sg_ext as sgx
 import sentry_sdk
 import threading
 import webbrowser
@@ -150,12 +151,13 @@ class GUI(object):
                         "newest": check_response["version"],
                     }
                 )
-                confirm = self.yes_no_popup(
-                    "A newer version is available, would you like to update from version %(current)s to "
-                    "version %(newest)s?" % {
-                        "current": self.application_version,
-                        "newest": check_response["version"],
-                    },
+                confirm = self.ok_cancel_popup(
+                    text="A newer version is available, would you like to update from version %(current)s to "
+                         "version %(newest)s?" % {
+                            "current": self.application_version,
+                            "newest": check_response["version"],
+                         },
+                    title="New Version Available",
                 )
                 if confirm:
                     # If the user has decided that they want to update
@@ -260,14 +262,15 @@ class GUI(object):
         return entry + text
 
     @staticmethod
-    def yes_no_popup(text):
+    def ok_cancel_popup(text, title):
         """
         Generate and display a yes no prompt that returns a boolean.
         """
-        return sg.PopupYesNo(
+        return sgx.PopupOkCancelTitled(
             text,
+            title=title,
             icon=ICON_FILE,
-        ) == "Yes"
+        ) == "OK"
 
     @staticmethod
     def folder_popup(message, title):
