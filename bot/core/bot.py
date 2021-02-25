@@ -790,6 +790,10 @@ class Bot(object):
         """
         Handle the frozen emulator based game state check.
         """
+        # We'll travel to the main screen whenever handling a frozen check,
+        # this will have the most movement *if* the game isn't currently frozen.
+        self.travel_to_main_screen()
+
         if not self.last_screenshot:
             self.last_screenshot = self.snapshot(
                 region=self.configurations["regions"]["check_game_state"]["frozen_screenshot_area"],
