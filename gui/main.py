@@ -168,6 +168,11 @@ class GUI(object):
                         title="Choose Install Directory",
                     )
                     if location:
+                        # Ensure the location chosen is saved so upon the next
+                        # update or restart, same location is used throughout.
+                        self.persist.set_default_auto_update_path(
+                            value=location,
+                        )
                         self.logger.info(
                             "Attempting to download the newest application version (%(newest)s) now..." % {
                                 "newest": check_response["version"],
@@ -272,14 +277,14 @@ class GUI(object):
             icon=ICON_FILE,
         ) == "OK"
 
-    @staticmethod
-    def folder_popup(message, title):
+    def folder_popup(self, message, title):
         """
         Generate and display a popup box that displays some text and asks for a directory/location.
         """
         return sg.PopupGetFolder(
             message=message,
             title=title,
+            default_path=self.persist.get_default_auto_update_path(),
             icon=ICON_FILE,
         )
 
