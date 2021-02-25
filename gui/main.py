@@ -210,6 +210,7 @@ class GUI(object):
                                     "download": check_response["url"],
                                 }
                             )
+                            sentry_sdk.capture_exception()
                     else:
                         self.logger.info(
                             "No location was chosen, skipping..."
