@@ -145,6 +145,7 @@ class Bot(object):
                 self.logger.debug(
                     self.license.license
                 )
+                self.license.flush()
                 self.license.collect_license(logger=self.logger)
                 self.license.online()
                 self.logger.info(
