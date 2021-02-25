@@ -48,6 +48,7 @@ from bot.core.bot import (
 )
 
 import PySimpleGUIWx as sg
+import sg_ext as sgx
 import sentry_sdk
 import threading
 import webbrowser
@@ -150,12 +151,13 @@ class GUI(object):
                         "newest": check_response["version"],
                     }
                 )
-                confirm = self.yes_no_popup(
-                    "A newer version is available, would you like to update from version %(current)s to "
-                    "version %(newest)s?" % {
-                        "current": self.application_version,
-                        "newest": check_response["version"],
-                    },
+                confirm = self.ok_cancel_popup(
+                    text="A newer version is available, would you like to update from version %(current)s to "
+                         "version %(newest)s?" % {
+                            "current": self.application_version,
+                            "newest": check_response["version"],
+                         },
+                    title="New Version Available",
                 )
                 if confirm:
                     # If the user has decided that they want to update
@@ -166,6 +168,11 @@ class GUI(object):
                         title="Choose Install Directory",
                     )
                     if location:
+                        # Ensure the location chosen is saved so upon the next
+                        # update or restart, same location is used throughout.
+                        self.persist.set_default_auto_update_path(
+                            value=location,
+                        )
                         self.logger.info(
                             "Attempting to download the newest application version (%(newest)s) now..." % {
                                 "newest": check_response["version"],
@@ -203,6 +210,7 @@ class GUI(object):
                                     "download": check_response["url"],
                                 }
                             )
+                            sentry_sdk.capture_exception()
                     else:
                         self.logger.info(
                             "No location was chosen, skipping..."
@@ -260,23 +268,24 @@ class GUI(object):
         return entry + text
 
     @staticmethod
-    def yes_no_popup(text):
+    def ok_cancel_popup(text, title):
         """
         Generate and display a yes no prompt that returns a boolean.
         """
-        return sg.PopupYesNo(
+        return sgx.PopupOkCancelTitled(
             text,
+            title=title,
             icon=ICON_FILE,
-        ) == "Yes"
+        ) == "OK"
 
-    @staticmethod
-    def folder_popup(message, title):
+    def folder_popup(self, message, title):
         """
         Generate and display a popup box that displays some text and asks for a directory/location.
         """
         return sg.PopupGetFolder(
             message=message,
             title=title,
+            default_path=self.persist.get_default_auto_update_path(),
             icon=ICON_FILE,
         )
 
