@@ -2151,6 +2151,26 @@ class Bot(object):
         """
         Perform all perk related functionality in game, using/purchasing perks if enabled.
         """
+        self.collapse()
+        # The perk suffix is used to ensure tournament perks are used
+        # if enabled and a tournament is running, suffix is applied
+        # at the end of the perks list below.
+        perk_suffix = ""
+
+        if (
+            self.configuration["perks_use_separate_in_tournament"]
+            and self.point_is_color_range(
+                point=self.configurations["points"]["tournaments"]["tournaments_status"],
+                color_range=self.configurations["colors"]["tournaments"]["tournaments_in_progress_range"],
+            )
+        ):
+            # A tournament is in progress and separate perks are enabled,
+            # we'll use whatever perks are enabled for a tournament.
+            self.logger.info(
+                "Tournament perks are enabled, those will be used instead..."
+            )
+            perk_suffix = "_tournament"
+
         self.travel_to_master(collapsed=False)
         self.logger.info(
             "Using perks in game..."
@@ -2182,13 +2202,13 @@ class Bot(object):
         # Note: Reversing our list of enabled perks (bottom to top).
         for perk in [
             perk for perk, enabled in [
-                ("clan_crate", self.configuration["perks_enable_clan_crate"]),
-                ("doom", self.configuration["perks_enable_doom"]),
-                ("mana_potion", self.configuration["perks_enable_mana_potion"]),
-                ("make_it_rain", self.configuration["perks_enable_make_it_rain"]),
-                ("adrenaline_rush", self.configuration["perks_enable_adrenaline_rush"]),
-                ("power_of_swiping", self.configuration["perks_enable_power_of_swiping"]),
-                ("mega_boost", self.configuration["perks_enable_mega_boost"]),
+                ("clan_crate", self.configuration["perks_enable_clan_crate%(suffix)s" % {"suffix": perk_suffix}]),
+                ("doom", self.configuration["perks_enable_doom%(suffix)s" % {"suffix": perk_suffix}]),
+                ("mana_potion", self.configuration["perks_enable_mana_potion%(suffix)s" % {"suffix": perk_suffix}]),
+                ("make_it_rain", self.configuration["perks_enable_make_it_rain%(suffix)s" % {"suffix": perk_suffix}]),
+                ("adrenaline_rush", self.configuration["perks_enable_adrenaline_rush%(suffix)s" % {"suffix": perk_suffix}]),
+                ("power_of_swiping", self.configuration["perks_enable_power_of_swiping%(suffix)s" % {"suffix": perk_suffix}]),
+                ("mega_boost", self.configuration["perks_enable_mega_boost%(suffix)s" % {"suffix": perk_suffix}]),
             ] if enabled
         ]:
             self.logger.info(
