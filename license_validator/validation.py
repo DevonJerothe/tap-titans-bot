@@ -278,6 +278,9 @@ class LicenseValidator(object):
                     instances=authority["program_files"],
                     logger=logger,
                 )
+        logger.info(
+            "Done..."
+        )
 
     def collect_license_data(self):
         """
