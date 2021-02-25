@@ -1093,9 +1093,15 @@ class Bot(object):
         """
         Check that a specific point is currently a certain color.
         """
-        return self.snapshot().getpixel(
-            xy=tuple(point),
-        ) == tuple(color)
+        try:
+            return self.snapshot().getpixel(
+                xy=tuple(point),
+            ) == tuple(color)
+        except IndexError:
+            # image index is out of range.
+            # possible when snapshot and tuple contain information
+            # that conflicts.
+            return False
 
     def point_is_color_range(
         self,
@@ -1105,9 +1111,15 @@ class Bot(object):
         """
         Check that a specific point is currently within a color range.
         """
-        pixel = self.snapshot().getpixel(
-            xy=tuple(point),
-        )
+        try:
+            pixel = self.snapshot().getpixel(
+                xy=tuple(point),
+            )
+        except IndexError:
+            # image index is out of range.
+            # possible when snapshot and tuple contain information
+            # that conflicts.
+            return False
         # Additional checks here to determine that pixel falls within
         # the range specified...
         return (
