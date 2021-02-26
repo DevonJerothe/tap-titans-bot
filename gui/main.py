@@ -170,7 +170,7 @@ class GUI(object):
                     if location:
                         # Ensure the location chosen is saved so upon the next
                         # update or restart, same location is used throughout.
-                        self.persist.set_default_auto_update_path(
+                        self.persist.set_auto_update_path(
                             value=location,
                         )
                         self.logger.info(
@@ -285,7 +285,7 @@ class GUI(object):
         return sg.PopupGetFolder(
             message=message,
             title=title,
-            default_path=self.persist.get_default_auto_update_path(),
+            default_path=self.persist.get_auto_update_path(),
             icon=ICON_FILE,
         )
 

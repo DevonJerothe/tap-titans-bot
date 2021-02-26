@@ -17,13 +17,13 @@ class PersistenceUtils(object):
         self.toast_key = "enable_toast_notifications"
         self.failsafe_key = "enable_failsafe"
         self.ad_blocking_key = "enable_ad_blocking"
-        self.default_auto_update_path = "default_auto_update_path"
+        self.auto_update_path_key = "auto_update_path"
 
         self.default_persistence = {
             self.toast_key: True,
             self.failsafe_key: True,
             self.ad_blocking_key: False,
-            self.default_auto_update_path: "",
+            self.auto_update_path_key: "",
         }
         # Make this private, we can use it through utilities
         # below only to get/set values.
@@ -134,15 +134,15 @@ class PersistenceUtils(object):
         """
         return self._data[self.ad_blocking_key]
 
-    def set_default_auto_update_path(self, value):
+    def set_auto_update_path(self, value):
         """
         Update the default auto update path persisted value.
         """
-        self._data[self.default_auto_update_path] = value
+        self._data[self.auto_update_path_key] = value
         self._write_persistence_data()
 
-    def get_default_auto_update_path(self):
+    def get_auto_update_path(self):
         """
         Retrieve the default auto update path persisted value.
         """
-        return self._data[self.default_auto_update_path]
+        return self._data[self.auto_update_path_key]
