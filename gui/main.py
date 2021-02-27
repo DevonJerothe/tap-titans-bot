@@ -48,7 +48,7 @@ from bot.core.bot import (
 )
 
 import PySimpleGUIWx as sg
-import sg_ext as sgx
+import gui.sg_ext as sgx
 import sentry_sdk
 import threading
 import webbrowser
@@ -126,6 +126,36 @@ class GUI(object):
             MENU_TIMEOUT: self.refresh,
         }
 
+    def handle_console_size(self):
+        """
+        Handle resizing the application console.
+        """
+        try:
+            if self.window_size:
+                # We also only ever actually set the terminal size when it's
+                # possible to gather the current size.
+                os.system(self.persist.get_console_startup_size())
+        except Exception:
+            # If anything fails while trying to update the window
+            # size for the user, we can simply just continue execution
+            # to avoid breaking the application completely.
+            self.logger.info(
+                "An error occurred while attempting to modify the console size, skipping..."
+            )
+
+    def remember_console_size(self):
+        """
+        Handle "remembering" the current size of the console.
+        """
+        window_size = self.window_size
+
+        if window_size:
+            # Only ever persisting the value when something valid can even be
+            # gathered from the terminal.
+            self.persist.set_console_startup_size(
+                value=self.window_size,
+            )
+
     def handle_auto_updates(self):
         """
         Handle auto updates of the application.
@@ -170,7 +200,7 @@ class GUI(object):
                     if location:
                         # Ensure the location chosen is saved so upon the next
                         # update or restart, same location is used throughout.
-                        self.persist.set_default_auto_update_path(
+                        self.persist.set_auto_update_path(
                             value=location,
                         )
                         self.logger.info(
@@ -242,6 +272,23 @@ class GUI(object):
             "application_version": self.application_version,
         }
 
+    @property
+    def window_size(self):
+        """
+        Retrieve the current window size.
+        """
+        try:
+            size = os.get_terminal_size()
+        except OSError:
+            # This is mostly a development shim but other cases might occur
+            # where no terminal size can be gathered... In which case, we'll
+            # just return a none type value.
+            return None
+        return "mode con: cols=%(cols)s lines=%(lines)s" % {
+            "cols": size.columns,
+            "lines": size.lines,
+        }
+
     @staticmethod
     def menu_entry(
         text=None,
@@ -285,7 +332,7 @@ class GUI(object):
         return sg.PopupGetFolder(
             message=message,
             title=title,
-            default_path=self.persist.get_default_auto_update_path(),
+            default_path=self.persist.get_auto_update_path(),
             icon=ICON_FILE,
         )
 
@@ -784,6 +831,7 @@ class GUI(object):
         """
         Begin main runtime loop for application.
         """
+        self.handle_console_size()
         self.handle_auto_updates()
 
         try:
@@ -826,5 +874,7 @@ class GUI(object):
             # down. In case some information is needed from the terminal.
             input("\nPress \"Enter\" to exit...")
         finally:
+            # Always set our "remembered" console size on exit.
+            self.remember_console_size()
             # Always stop session on application termination...
             self.stop_session()
