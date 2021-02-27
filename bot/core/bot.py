@@ -3194,7 +3194,6 @@ class Bot(object):
         self.logger.debug(
             "Attempting to collapse any panels in game..."
         )
-
         if self.find_and_click_image(
             image=self.files["travel_collapse"],
             region=self.configurations["regions"]["travel"]["collapse_area"],
@@ -3211,6 +3210,84 @@ class Bot(object):
         ):
             self.logger.debug(
                 "Panel has been successfully collapsed..."
+            )
+
+    def collapse_event_panel(self):
+        """
+        Attempt to collapse the event panel in game if it is currently open.
+        """
+        self.logger.debug(
+            "Attempting to collapse the event panel in game..."
+        )
+        # Early check in case the panel can not be expanded or collapsed
+        # due to no event or abyssal tournament even being available in any way.
+        if not self.search(
+            image=[
+                self.files["event_panel_collapse"],
+                self.files["event_panel_expand"],
+            ],
+            region=self.configurations["regions"]["event_panel"]["event_area"],
+            precision=self.configurations["parameters"]["event_panel"]["event_precision"],
+        )[0]:
+            self.logger.debug(
+                "The event panel can not currently be collapsed or expanded, skipping..."
+            )
+            return
+
+        if self.find_and_click_image(
+            image=self.files["event_panel_collapse"],
+            region=self.configurations["regions"]["event_panel"]["event_area"],
+            precision=self.configurations["parameters"]["event_panel"]["event_precision"],
+            pause=self.configurations["parameters"]["event_panel"]["collapse_loop_pause"],
+            pause_not_found=self.configurations["parameters"]["event_panel"]["collapse_loop_pause_not_found"],
+            timeout=self.configurations["parameters"]["event_panel"]["timeout_collapse"],
+            timeout_search_kwargs={
+                "image": self.files["event_panel_expand"],
+                "region": self.configurations["regions"]["event_panel"]["event_area"],
+                "precision": self.configurations["parameters"]["event_panel"]["event_precision"],
+            },
+        ):
+            self.logger.info(
+                "Event panel has been successfully collapsed..."
+            )
+
+    def expand_event_panel(self):
+        """
+        Attempt to expand the event panel in game if it is currently closed.
+        """
+        self.logger.debug(
+            "Attempting to expand the event panel in game."
+        )
+        # Early check in case the panel can not be expanded or collapsed
+        # due to no event or abyssal tournament even being available in any way.
+        if not self.search(
+            image=[
+                self.files["event_panel_collapse"],
+                self.files["event_panel_expand"],
+            ],
+            region=self.configurations["regions"]["event_panel"]["event_area"],
+            precision=self.configurations["parameters"]["event_panel"]["event_precision"],
+        )[0]:
+            self.logger.debug(
+                "The event panel can not currently be collapsed or expanded, skipping..."
+            )
+            return
+
+        if self.find_and_click_image(
+            image=self.files["event_panel_expand"],
+            region=self.configurations["regions"]["event_panel"]["event_area"],
+            precision=self.configurations["parameters"]["event_panel"]["event_precision"],
+            pause=self.configurations["parameters"]["event_panel"]["expand_loop_pause"],
+            pause_not_found=self.configurations["parameters"]["event_panel"]["expand_loop_pause_not_found"],
+            timeout=self.configurations["parameters"]["event_panel"]["timeout_expand"],
+            timeout_search_kwargs={
+                "image": self.files["event_panel_collapse"],
+                "region": self.configurations["regions"]["event_panel"]["event_area"],
+                "precision": self.configurations["parameters"]["event_panel"]["event_precision"],
+            },
+        ):
+            self.logger.info(
+                "Event panel has been successfully expanded..."
             )
 
     def export_data(self):
