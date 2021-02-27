@@ -3104,6 +3104,7 @@ class Bot(object):
         """
         try:
             self.collapse()
+            self.collapse_event_panel()
         except TimeoutError:
             # Check for a timeout error directly while collapsing panels,
             # this allows us to skip tapping if collapsing failed.
