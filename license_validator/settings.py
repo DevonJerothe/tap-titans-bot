@@ -54,6 +54,16 @@ VALIDATION_FILES_SYNC_URL = "%(validation_licenses_url)s/%(files_sync_endpoint)s
     "files_sync_endpoint": "files/sync",
 }
 
+# The configurations url can be used to retrieve a list of the configurations associated
+# with a user in the system.
+VALIDATION_CONFIGURATIONS_URL = "%(validation_licenses_url)s/%(configurations_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "configurations_endpoint": "license/configurations",
+}
+VALIDATION_CONFIGURATION_ACTIVATE_URL = "%(validation_licenses_url)s/%(configuration_activate_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "configuration_activate_endpoint": "license/configuration/activate",
+}
 VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "license_retrieve_endpoint": "license/retrieve",
