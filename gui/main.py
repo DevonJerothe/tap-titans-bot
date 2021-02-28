@@ -22,8 +22,9 @@ from gui.settings import (
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
-    MENU_SETTINGS,
-    MENU_SETTINGS_VIEW_CONFIGURATIONS,
+    MENU_CONFIGURATIONS,
+    MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS,
+    MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS,
     MENU_LOCAL_SETTINGS,
     MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS,
     MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
@@ -48,9 +49,11 @@ from bot.core.bot import (
 )
 
 import PySimpleGUIWx as sg
+import gui.sg_ext as sgx
 import sentry_sdk
 import threading
 import webbrowser
+import copy
 import time
 import uuid
 import os
@@ -73,6 +76,8 @@ class GUI(object):
         self._pause = False
         self._thread = None
         self._session = None
+
+        self._configurations_cache = {}
 
         self.application_name = application_name
         self.application_version = application_version
@@ -108,7 +113,8 @@ class GUI(object):
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
-            MENU_SETTINGS_VIEW_CONFIGURATIONS: self.settings_view_configurations,
+            MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS: self.configurations_edit_configurations,
+            MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS: self.configurations_refresh_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
@@ -124,6 +130,36 @@ class GUI(object):
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
         }
+
+    def handle_console_size(self):
+        """
+        Handle resizing the application console.
+        """
+        try:
+            if self.window_size:
+                # We also only ever actually set the terminal size when it's
+                # possible to gather the current size.
+                os.system(self.persist.get_console_startup_size())
+        except Exception:
+            # If anything fails while trying to update the window
+            # size for the user, we can simply just continue execution
+            # to avoid breaking the application completely.
+            self.logger.info(
+                "An error occurred while attempting to modify the console size, skipping..."
+            )
+
+    def remember_console_size(self):
+        """
+        Handle "remembering" the current size of the console.
+        """
+        window_size = self.window_size
+
+        if window_size:
+            # Only ever persisting the value when something valid can even be
+            # gathered from the terminal.
+            self.persist.set_console_startup_size(
+                value=self.window_size,
+            )
 
     def handle_auto_updates(self):
         """
@@ -150,12 +186,13 @@ class GUI(object):
                         "newest": check_response["version"],
                     }
                 )
-                confirm = self.yes_no_popup(
-                    "A newer version is available, would you like to update from version %(current)s to "
-                    "version %(newest)s?" % {
-                        "current": self.application_version,
-                        "newest": check_response["version"],
-                    },
+                confirm = self.ok_cancel_popup(
+                    text="A newer version is available, would you like to update from version %(current)s to "
+                         "version %(newest)s?" % {
+                            "current": self.application_version,
+                            "newest": check_response["version"],
+                         },
+                    title="New Version Available",
                 )
                 if confirm:
                     # If the user has decided that they want to update
@@ -166,6 +203,11 @@ class GUI(object):
                         title="Choose Install Directory",
                     )
                     if location:
+                        # Ensure the location chosen is saved so upon the next
+                        # update or restart, same location is used throughout.
+                        self.persist.set_auto_update_path(
+                            value=location,
+                        )
                         self.logger.info(
                             "Attempting to download the newest application version (%(newest)s) now..." % {
                                 "newest": check_response["version"],
@@ -203,6 +245,7 @@ class GUI(object):
                                     "download": check_response["url"],
                                 }
                             )
+                            sentry_sdk.capture_exception()
                     else:
                         self.logger.info(
                             "No location was chosen, skipping..."
@@ -224,6 +267,37 @@ class GUI(object):
                 "updating, skipping..."
             )
 
+    def handle_configuration_activate(self, configuration):
+        """
+        Handle activating a configuration and setting it to an "active" state.
+        """
+        self.logger.info(
+            "Activating %(name)s..." % {
+                "name": configuration,
+            }
+        )
+        self.toast(
+            title="Configurations",
+            message="Activating %(name)s..." % {
+                "name": configuration,
+            },
+        )
+        configuration = self._configurations_cache[configuration]
+
+        # Send a post event to the backend to set the given configuration
+        # to an active state.
+        activate_response = self.license.activate_configuration(configuration=configuration["pk"])
+        activate_response = activate_response.json()
+        # Updating the cache since the returned data here should be the same
+        # as a normal refresh, but our active configuration has changed.
+        self._configurations_cache = copy.deepcopy(activate_response)
+        self.logger.debug(
+            "Configurations cache has been updated following active configuration change..."
+        )
+        self.logger.debug(
+            self._configurations_cache
+        )
+
     @property
     def menu_title(self):
         """
@@ -232,6 +306,23 @@ class GUI(object):
         return "%(application_name)s (%(application_version)s)" % {
             "application_name": self.application_name,
             "application_version": self.application_version,
+        }
+
+    @property
+    def window_size(self):
+        """
+        Retrieve the current window size.
+        """
+        try:
+            size = os.get_terminal_size()
+        except OSError:
+            # This is mostly a development shim but other cases might occur
+            # where no terminal size can be gathered... In which case, we'll
+            # just return a none type value.
+            return None
+        return "mode con: cols=%(cols)s lines=%(lines)s" % {
+            "cols": size.columns,
+            "lines": size.lines,
         }
 
     @staticmethod
@@ -260,23 +351,24 @@ class GUI(object):
         return entry + text
 
     @staticmethod
-    def yes_no_popup(text):
+    def ok_cancel_popup(text, title):
         """
         Generate and display a yes no prompt that returns a boolean.
         """
-        return sg.PopupYesNo(
+        return sgx.PopupOkCancelTitled(
             text,
+            title=title,
             icon=ICON_FILE,
-        ) == "Yes"
+        ) == "OK"
 
-    @staticmethod
-    def folder_popup(message, title):
+    def folder_popup(self, message, title):
         """
         Generate and display a popup box that displays some text and asks for a directory/location.
         """
         return sg.PopupGetFolder(
             message=message,
             title=title,
+            default_path=self.persist.get_auto_update_path(),
             icon=ICON_FILE,
         )
 
@@ -333,9 +425,12 @@ class GUI(object):
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
-                self.menu_entry(text=MENU_SETTINGS),
+                self.menu_entry(text=MENU_CONFIGURATIONS),
                 [
-                    self.menu_entry(text=MENU_SETTINGS_VIEW_CONFIGURATIONS),
+                    self.menu_entry(text=MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS),
+                    self.menu_entry(text=MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS),
+                    self.menu_entry(separator=True),
+                    *self.refresh_configurations(refresh=False)
                 ],
                 self.menu_entry(text=MENU_LOCAL_SETTINGS),
                 [
@@ -366,6 +461,41 @@ class GUI(object):
             self._thread = None
 
         self.tray.update(menu=self.menu())
+
+    def refresh_configurations(self, refresh=True):
+        """
+        Refresh the configurations available for a user. The data stored here is done so in a way
+        that in can be viewed within a menu, some additional information is stored about the keys about
+        each one.
+        """
+        if refresh:
+            configurations_response = self.license.collect_configurations()
+            configurations_response = configurations_response.json()
+            # Updating the cache through a deepcopy of the response...
+            # Response is expected to contain a dictionary of configurations.
+            self._configurations_cache = copy.deepcopy(configurations_response)
+            self.logger.debug(
+                "Configurations cache has been updated..."
+            )
+            self.logger.debug(
+                self._configurations_cache
+            )
+        # Begin populating menu entries...
+        menu_entries = []
+
+        for configuration in self._configurations_cache.values():
+            if configuration["active"]:
+                text = "%(configuration_name)s (ACTIVE)" % {
+                    "configuration_name": configuration["name"],
+                }
+            else:
+                text = configuration["name"]
+            # Append the configuration to the menu entry, active configurations
+            # are disabled for local modification.
+            menu_entries.append(
+                self.menu_entry(text=text, disabled=configuration["active"]),
+            )
+        return menu_entries
 
     def menu_title_link(self):
         """
@@ -523,9 +653,9 @@ class GUI(object):
             )
             self._pause = False
 
-    def settings_view_configurations(self):
+    def configurations_edit_configurations(self):
         """
-        "settings_view_configurations" event functionality.
+        "configurations_edit_configurations" event functionality.
         """
         if self.license.license_available:
             return webbrowser.open_new_tab(
@@ -534,6 +664,20 @@ class GUI(object):
                     "license": self.license.license,
                 }
             )
+
+    def configurations_refresh_configurations(self):
+        """
+        "configurations_refresh_configurations" event functionality.
+        """
+        if self.license.license_available:
+            self.logger.info(
+                "Refreshing Configurations..."
+            )
+            self.toast(
+                title="Configurations",
+                message="Refreshing Configurations...",
+            )
+            self.refresh_configurations()
 
     def update_license(self):
         """
@@ -775,6 +919,11 @@ class GUI(object):
         """
         Begin main runtime loop for application.
         """
+        # Always handling a configuration refresh on initial
+        # application startup.
+        self.refresh_configurations()
+
+        self.handle_console_size()
         self.handle_auto_updates()
 
         try:
@@ -801,13 +950,19 @@ class GUI(object):
             sentry_sdk.set_tag("license", self.license.license)
 
             while True:
-                # Always retrieve the event on each loop. An event is grabbed
-                # when our application or menu entries are pressed.
-                event = self.event_map.get(self.tray.read(
-                    timeout=100,
-                ))
-                if event:
-                    event()
+                event_text = self.tray.read(timeout=100)
+                event_func = self.event_map.get(event_text)
+
+                if not event_func:
+                    # Also check to see if a configuration is being set
+                    # as active, this is handled dynamically based on the
+                    # cached configurations.
+                    if event_text in self._configurations_cache:
+                        self.handle_configuration_activate(
+                            configuration=event_text,
+                        )
+                else:
+                    event_func()
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
@@ -817,5 +972,7 @@ class GUI(object):
             # down. In case some information is needed from the terminal.
             input("\nPress \"Enter\" to exit...")
         finally:
+            # Always set our "remembered" console size on exit.
+            self.remember_console_size()
             # Always stop session on application termination...
             self.stop_session()

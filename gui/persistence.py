@@ -17,11 +17,15 @@ class PersistenceUtils(object):
         self.toast_key = "enable_toast_notifications"
         self.failsafe_key = "enable_failsafe"
         self.ad_blocking_key = "enable_ad_blocking"
+        self.auto_update_path_key = "auto_update_path"
+        self.console_startup_size_key = "console_startup_size"
 
         self.default_persistence = {
             self.toast_key: True,
             self.failsafe_key: True,
             self.ad_blocking_key: False,
+            self.auto_update_path_key: "",
+            self.console_startup_size_key: "mode con: cols=140 lines=200"
         }
         # Make this private, we can use it through utilities
         # below only to get/set values.
@@ -131,3 +135,29 @@ class PersistenceUtils(object):
         Retrieve the ad blocking persisted value.
         """
         return self._data[self.ad_blocking_key]
+
+    def set_auto_update_path(self, value):
+        """
+        Update the default auto update path persisted value.
+        """
+        self._data[self.auto_update_path_key] = value
+        self._write_persistence_data()
+
+    def get_auto_update_path(self):
+        """
+        Retrieve the default auto update path persisted value.
+        """
+        return self._data[self.auto_update_path_key]
+
+    def set_console_startup_size(self, value):
+        """
+        Update the console startup size persisted value.
+        """
+        self._data[self.console_startup_size_key] = value
+        self._write_persistence_data()
+
+    def get_console_startup_size(self):
+        """
+        Retrieve the console startup size persisted value.
+        """
+        return self._data[self.console_startup_size_key]
