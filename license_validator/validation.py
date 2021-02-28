@@ -10,6 +10,8 @@ from license_validator.settings import (
     VALIDATION_FILES_CHECK_URL,
     VALIDATION_FILES_RETRIEVE_URL,
     VALIDATION_FILES_SYNC_URL,
+    VALIDATION_CONFIGURATIONS_URL,
+    VALIDATION_CONFIGURATION_ACTIVATE_URL,
     VALIDATION_LICENSE_RETRIEVE_URL,
     VALIDATION_ONLINE_URL,
     VALIDATION_OFFLINE_URL,
@@ -75,6 +77,8 @@ class LicenseValidator(object):
         self.program_files_retrieve_url = VALIDATION_FILES_RETRIEVE_URL
         self.program_files_sync_url = VALIDATION_FILES_SYNC_URL
 
+        self.program_configurations_url = VALIDATION_CONFIGURATIONS_URL
+        self.program_configuration_activate_url = VALIDATION_CONFIGURATION_ACTIVATE_URL
         self.license_retrieve_url = VALIDATION_LICENSE_RETRIEVE_URL
 
         self.program_online_url = VALIDATION_ONLINE_URL
@@ -373,6 +377,29 @@ class LicenseValidator(object):
         zipped.extractall(path=location)
 
         return executable
+
+    def collect_configurations(self):
+        """
+        Collect the configurations associated with a specific user.
+        """
+        if self.license_available:
+            return self._post(
+                url=self.program_configurations_url,
+                data=self.program_data(),
+            )
+
+    def activate_configuration(self, configuration):
+        """
+        Activate the configuration specified, setting it to an active state.
+        """
+        if self.license_available:
+            return self._post(
+                url=self.program_configuration_activate_url,
+                data={
+                    "configuration": configuration,
+                    **self.program_data(),
+                },
+            )
 
     def online(self):
         """
