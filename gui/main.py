@@ -22,8 +22,9 @@ from gui.settings import (
     MENU_TOOLS_LOCAL_DATA,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
-    MENU_SETTINGS,
-    MENU_SETTINGS_VIEW_CONFIGURATIONS,
+    MENU_CONFIGURATIONS,
+    MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS,
+    MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS,
     MENU_LOCAL_SETTINGS,
     MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS,
     MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS,
@@ -52,6 +53,7 @@ import gui.sg_ext as sgx
 import sentry_sdk
 import threading
 import webbrowser
+import copy
 import time
 import uuid
 import os
@@ -74,6 +76,8 @@ class GUI(object):
         self._pause = False
         self._thread = None
         self._session = None
+
+        self._configurations_cache = {}
 
         self.application_name = application_name
         self.application_version = application_version
@@ -109,7 +113,8 @@ class GUI(object):
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
-            MENU_SETTINGS_VIEW_CONFIGURATIONS: self.settings_view_configurations,
+            MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS: self.configurations_edit_configurations,
+            MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS: self.configurations_refresh_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
@@ -262,6 +267,37 @@ class GUI(object):
                 "updating, skipping..."
             )
 
+    def handle_configuration_activate(self, configuration):
+        """
+        Handle activating a configuration and setting it to an "active" state.
+        """
+        self.logger.info(
+            "Activating %(name)s..." % {
+                "name": configuration,
+            }
+        )
+        self.toast(
+            title="Configurations",
+            message="Activating %(name)s..." % {
+                "name": configuration,
+            },
+        )
+        configuration = self._configurations_cache[configuration]
+
+        # Send a post event to the backend to set the given configuration
+        # to an active state.
+        activate_response = self.license.activate_configuration(configuration=configuration["pk"])
+        activate_response = activate_response.json()
+        # Updating the cache since the returned data here should be the same
+        # as a normal refresh, but our active configuration has changed.
+        self._configurations_cache = copy.deepcopy(activate_response)
+        self.logger.debug(
+            "Configurations cache has been updated following active configuration change..."
+        )
+        self.logger.debug(
+            self._configurations_cache
+        )
+
     @property
     def menu_title(self):
         """
@@ -389,9 +425,12 @@ class GUI(object):
                     self.menu_entry(separator=True),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
-                self.menu_entry(text=MENU_SETTINGS),
+                self.menu_entry(text=MENU_CONFIGURATIONS),
                 [
-                    self.menu_entry(text=MENU_SETTINGS_VIEW_CONFIGURATIONS),
+                    self.menu_entry(text=MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS),
+                    self.menu_entry(text=MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS),
+                    self.menu_entry(separator=True),
+                    *self.refresh_configurations(refresh=False)
                 ],
                 self.menu_entry(text=MENU_LOCAL_SETTINGS),
                 [
@@ -422,6 +461,41 @@ class GUI(object):
             self._thread = None
 
         self.tray.update(menu=self.menu())
+
+    def refresh_configurations(self, refresh=True):
+        """
+        Refresh the configurations available for a user. The data stored here is done so in a way
+        that in can be viewed within a menu, some additional information is stored about the keys about
+        each one.
+        """
+        if refresh:
+            configurations_response = self.license.collect_configurations()
+            configurations_response = configurations_response.json()
+            # Updating the cache through a deepcopy of the response...
+            # Response is expected to contain a dictionary of configurations.
+            self._configurations_cache = copy.deepcopy(configurations_response)
+            self.logger.debug(
+                "Configurations cache has been updated..."
+            )
+            self.logger.debug(
+                self._configurations_cache
+            )
+        # Begin populating menu entries...
+        menu_entries = []
+
+        for configuration in self._configurations_cache.values():
+            if configuration["active"]:
+                text = "%(configuration_name)s (ACTIVE)" % {
+                    "configuration_name": configuration["name"],
+                }
+            else:
+                text = configuration["name"]
+            # Append the configuration to the menu entry, active configurations
+            # are disabled for local modification.
+            menu_entries.append(
+                self.menu_entry(text=text, disabled=configuration["active"]),
+            )
+        return menu_entries
 
     def menu_title_link(self):
         """
@@ -579,9 +653,9 @@ class GUI(object):
             )
             self._pause = False
 
-    def settings_view_configurations(self):
+    def configurations_edit_configurations(self):
         """
-        "settings_view_configurations" event functionality.
+        "configurations_edit_configurations" event functionality.
         """
         if self.license.license_available:
             return webbrowser.open_new_tab(
@@ -590,6 +664,20 @@ class GUI(object):
                     "license": self.license.license,
                 }
             )
+
+    def configurations_refresh_configurations(self):
+        """
+        "configurations_refresh_configurations" event functionality.
+        """
+        if self.license.license_available:
+            self.logger.info(
+                "Refreshing Configurations..."
+            )
+            self.toast(
+                title="Configurations",
+                message="Refreshing Configurations...",
+            )
+            self.refresh_configurations()
 
     def update_license(self):
         """
@@ -831,6 +919,10 @@ class GUI(object):
         """
         Begin main runtime loop for application.
         """
+        # Always handling a configuration refresh on initial
+        # application startup.
+        self.refresh_configurations()
+
         self.handle_console_size()
         self.handle_auto_updates()
 
@@ -858,13 +950,19 @@ class GUI(object):
             sentry_sdk.set_tag("license", self.license.license)
 
             while True:
-                # Always retrieve the event on each loop. An event is grabbed
-                # when our application or menu entries are pressed.
-                event = self.event_map.get(self.tray.read(
-                    timeout=100,
-                ))
-                if event:
-                    event()
+                event_text = self.tray.read(timeout=100)
+                event_func = self.event_map.get(event_text)
+
+                if not event_func:
+                    # Also check to see if a configuration is being set
+                    # as active, this is handled dynamically based on the
+                    # cached configurations.
+                    if event_text in self._configurations_cache:
+                        self.handle_configuration_activate(
+                            configuration=event_text,
+                        )
+                else:
+                    event_func()
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
