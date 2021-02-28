@@ -1422,7 +1422,10 @@ class Bot(object):
         Ensure a boss is being fought currently if one is available.
         """
         if not self.search(
-            image=self.files["fight_boss_icon"],
+            image=[
+                self.files["fight_boss_icon"],
+                self.files["reconnect_icon"],
+            ],
             region=self.configurations["regions"]["fight_boss"]["search_area"],
             precision=self.configurations["parameters"]["fight_boss"]["search_precision"]
         )[0]:
@@ -1433,6 +1436,18 @@ class Bot(object):
             )
         else:
             try:
+                # Handle reconnection before trying to start a normal boss fight...
+                # We'll use a longer graceful pause period here for reconnecting.
+                if self.find_and_click_image(
+                    image=self.files["reconnect_icon"],
+                    region=self.configurations["regions"]["fight_boss"]["search_area"],
+                    precision=self.configurations["parameters"]["fight_boss"]["search_precision"],
+                    pause=self.configurations["parameters"]["fight_boss"]["reconnect_pause"],
+                ):
+                    self.logger.info(
+                        "Attempting to reconnect and initiate boss fight..."
+                    )
+                    return
                 self.logger.info(
                     "Attempting to initiate boss fight..."
                 )
