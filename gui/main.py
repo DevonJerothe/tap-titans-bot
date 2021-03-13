@@ -629,7 +629,6 @@ class GUI(object):
                 message="Stopping Session...",
             )
             self._stop = True
-            self._pause = False
             self._session = None
             self._thread.join()
             self._thread = None
