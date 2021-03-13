@@ -404,12 +404,12 @@ class GUI(object):
                 threaded=True,
             )
 
-    def log_and_toast(self, title, message):
+    def log_and_toast(self, title, message, duration=2.5):
         """
         Log and toast a given message and title.
         """
         self.logger.info(message)
-        self.toast(title=title, message=message)
+        self.toast(title=title, message=message, duration=duration)
 
     def menu(self):
         """
@@ -629,7 +629,6 @@ class GUI(object):
                 message="Stopping Session...",
             )
             self._stop = True
-            self._pause = False
             self._session = None
             self._thread.join()
             self._thread = None
