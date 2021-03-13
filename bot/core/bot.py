@@ -3780,6 +3780,9 @@ class Bot(object):
         self.logger.info("Configuration: %(configuration)s" % {
             "configuration": self.configuration["configuration_name"],
         })
+        self.logger.info("Experimental Configurations: %(experimental_configurations)s" % {
+            "experimental_configurations": self.license.license_data["experimental"],
+        })
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
         })
