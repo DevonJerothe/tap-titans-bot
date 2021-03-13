@@ -20,6 +20,7 @@ from gui.settings import (
     MENU_TOOLS,
     MENU_TOOLS_CHECK_FOR_UPDATES,
     MENU_TOOLS_LOCAL_DATA,
+    MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
     MENU_CONFIGURATIONS,
@@ -40,12 +41,23 @@ from gui.settings import (
 from win10toast import ToastNotifier
 
 from license_validator.validation import LicenseValidator
+from license_validator.exceptions import (
+    LicenseRetrievalError,
+    LicenseExpirationError,
+    LicenseServerError,
+    LicenseConnectionError,
+    LicenseIntegrityError,
+)
 from license_validator.utilities import (
     set_license,
 )
 
 from bot.core.bot import (
     Bot,
+)
+from bot.core.window import (
+    WindowHandler,
+    WindowNotFoundError,
 )
 
 import PySimpleGUIWx as sg
@@ -118,6 +130,7 @@ class GUI(object):
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
+            MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT: self.tools_generate_debug_screenshot,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
             MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS: self.settings_local_enable_toast_notifications,
@@ -271,16 +284,11 @@ class GUI(object):
         """
         Handle activating a configuration and setting it to an "active" state.
         """
-        self.logger.info(
-            "Activating %(name)s..." % {
-                "name": configuration,
-            }
-        )
-        self.toast(
+        self.log_and_toast(
             title="Configurations",
             message="Activating %(name)s..." % {
                 "name": configuration,
-            },
+            }
         )
         configuration = self._configurations_cache[configuration]
 
@@ -296,6 +304,10 @@ class GUI(object):
         )
         self.logger.debug(
             self._configurations_cache
+        )
+        self.log_and_toast(
+            title="Configurations",
+            message="Done...",
         )
 
     @property
@@ -397,6 +409,13 @@ class GUI(object):
                 threaded=True,
             )
 
+    def log_and_toast(self, title, message, duration=2.5):
+        """
+        Log and toast a given message and title.
+        """
+        self.logger.info(message)
+        self.toast(title=title, message=message, duration=duration)
+
     def menu(self):
         """
         Generate the menu used by the system tray application.
@@ -423,6 +442,7 @@ class GUI(object):
                     self.menu_entry(text=MENU_UPDATE_LICENSE),
                     self.menu_entry(text=MENU_TOOLS_FLUSH_LICENSE),
                     self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
                 self.menu_entry(text=MENU_CONFIGURATIONS),
@@ -469,17 +489,24 @@ class GUI(object):
         each one.
         """
         if refresh:
-            configurations_response = self.license.collect_configurations()
-            configurations_response = configurations_response.json()
-            # Updating the cache through a deepcopy of the response...
-            # Response is expected to contain a dictionary of configurations.
-            self._configurations_cache = copy.deepcopy(configurations_response)
-            self.logger.debug(
-                "Configurations cache has been updated..."
-            )
-            self.logger.debug(
-                self._configurations_cache
-            )
+            try:
+                configurations_response = self.license.collect_configurations()
+                configurations_response = configurations_response.json()
+                # Updating the cache through a deepcopy of the response...
+                # Response is expected to contain a dictionary of configurations.
+                self._configurations_cache = copy.deepcopy(configurations_response)
+                self.logger.debug(
+                    "Configurations cache has been updated..."
+                )
+                self.logger.debug(
+                    self._configurations_cache
+                )
+            # If any license errors occur here, we log it and pass, so no configurations are
+            # loaded, this occurs if an expired license or disabled license is encountered.
+            except (LicenseRetrievalError, LicenseExpirationError, LicenseServerError, LicenseConnectionError, LicenseIntegrityError):
+                self.logger.info(
+                    "Error occurred while retrieving configurations, skipping..."
+                )
         # Begin populating menu entries...
         menu_entries = []
 
@@ -536,10 +563,7 @@ class GUI(object):
         "force_prestige" event functionality.
         """
         if self._thread is not None:
-            self.logger.info(
-                "Forcing Prestige..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Force Prestige",
                 message="Forcing Prestige..."
             )
@@ -564,10 +588,7 @@ class GUI(object):
         "force_stop" event functionality.
         """
         if self._thread is not None:
-            self.logger.info(
-                "Forcing Stop..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Force Stop",
                 message="Forcing Stop...",
             )
@@ -578,10 +599,7 @@ class GUI(object):
         "start_session" event functionality.
         """
         if not self._thread:
-            self.logger.info(
-                "Starting Session..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Session",
                 message="Starting Session...",
             )
@@ -612,15 +630,11 @@ class GUI(object):
         "stop_session" functionality.
         """
         if self._thread is not None:
-            self.logger.info(
-                "Stopping Session..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Session",
                 message="Stopping Session...",
             )
             self._stop = True
-            self._pause = False
             self._session = None
             self._thread.join()
             self._thread = None
@@ -630,10 +644,7 @@ class GUI(object):
         "pause_session" functionality.
         """
         if self._thread is not None:
-            self.logger.info(
-                "Pausing Session..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Session",
                 message="Pausing Session...",
             )
@@ -644,10 +655,7 @@ class GUI(object):
         "resume_session" functionality.
         """
         if self._thread is not None:
-            self.logger.info(
-                "Resuming Session..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Session",
                 message="Resuming Session...",
             )
@@ -670,14 +678,15 @@ class GUI(object):
         "configurations_refresh_configurations" event functionality.
         """
         if self.license.license_available:
-            self.logger.info(
-                "Refreshing Configurations..."
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Configurations",
                 message="Refreshing Configurations...",
             )
             self.refresh_configurations()
+            self.log_and_toast(
+                title="Configurations",
+                message="Done...",
+            )
 
     def update_license(self):
         """
@@ -702,31 +711,27 @@ class GUI(object):
 
         # Update the license text that's handled
         # by the license validation utilities.
-        self.logger.info(
-            "Updating License: %(text)s..." % {
-                "text": text,
-            }
-        )
-        self.toast(
+        self.log_and_toast(
             title="License",
             message="Updating License: %(text)s..." % {
                 "text": text,
-            },
+            }
         )
         set_license(
             license_file=self.license.program_license_file,
             text=text,
+        )
+        self.log_and_toast(
+            title="License",
+            message="Done..."
         )
 
     def tools_check_for_updates(self):
         """
         "tools_check_for_updates" functionality.
         """
-        self.logger.info(
-            "Checking For Updates..."
-        )
-        self.toast(
-            title="Updates",
+        self.log_and_toast(
+            title="Auto Updates",
             message="Checking For Updates...",
         )
         self.handle_auto_updates()
@@ -735,16 +740,57 @@ class GUI(object):
         """
         "tools_local_data" functionality.
         """
-        self.logger.info(
-            "Opening Local Data Directory..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Local Data",
-            message="Opening Local Data Directory..."
+            message="Opening Local Data Directory...",
         )
         os.startfile(
             filepath=self.license.program_directory,
         )
+        self.log_and_toast(
+            title="Local Data",
+            message="Done...",
+        )
+
+    def tools_generate_debug_screenshot(self):
+        """
+        "tools_generate_debug_screenshot" functionality.
+        """
+        window = self.text_input_popup(
+            message="Please enter the emulator window you would like to generate a debug screenshot against:",
+            title="Debug Window",
+            default_text="NoxPlayer",
+        )
+
+        if window:
+            self.log_and_toast(
+                title="Debug Screenshot",
+                message="Capturing Debug Screenshot For Window: \"%(window)s\" Now..." % {
+                    "window": window,
+                },
+            )
+
+            win = WindowHandler()
+            win.enumerate()
+
+            try:
+                win = win.filter_first(filter_title=window)
+                # Capturing a screenshot of the window, this proves useful
+                # to make sure a user can check to see if the bot is able
+                # to see the emulator screen correctly.
+                capture = win.screenshot()
+                capture.show()
+
+                self.log_and_toast(
+                    title="Debug Screenshot",
+                    message="Done...",
+                )
+            except WindowNotFoundError:
+                self.logger.info(
+                    "Window: \"%(window)s\" Not Found..." % {
+                        "window": window,
+                    }
+                )
 
     def tools_most_recent_log(self):
         """
@@ -754,42 +800,35 @@ class GUI(object):
             log_directory=self.license.program_logs_directory,
         )
         if file:
-            self.logger.info(
-                "Opening Most Recent Log: %(file)s:..." % {
-                    "file": file,
-                }
-            )
-            self.toast(
+            self.log_and_toast(
                 title="Recent Logs",
-                message="Opening Most Recent Log: %(file)s..." % {
-                    "file": file,
-                },
+                message="Opening Most Recent Log...",
             )
-            return os.startfile(
+            os.startfile(
                 filepath=file,
             )
-        self.logger.info(
-            "No recent log is available to open..."
-        )
+            self.log_and_toast(
+                title="Recent Logs",
+                message="Done...",
+            )
+        else:
+            self.log_and_toast(
+                title="Recent Logs",
+                message="No Recent Log Available To Open...",
+            )
 
     def tools_flush_license(self):
         """
         "tools_flush_license" functionality.
         """
-        self.logger.info(
-            "Flushing License... (%(license)s)" % {
-                "license": self.license.license,
-            }
-        )
-        self.toast(
+        self.log_and_toast(
             title="Flush License",
-            message="Flushing License... (%(license)s)" % {
-                "license": self.license.license,
-            },
+            message="Flushing License...",
         )
         self.license.flush()
-        self.logger.info(
-            "Done..."
+        self.log_and_toast(
+            title="Flush License",
+            message="Done...",
         )
 
     def settings_local_enable_toast_notifications(self):
@@ -797,12 +836,9 @@ class GUI(object):
         "settings_local_enable_toast_notifications" functionality.
         """
         self.persist.set_enable_toast_notifications(value=True)
-        self.logger.info(
-            "Enabled Toast Notifications..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Toast Notifications",
-            message="Enabled Toast Notifications..."
+            message="Enabled Toast Notifications...",
         )
 
     def settings_local_disable_toast_notifications(self):
@@ -810,10 +846,7 @@ class GUI(object):
         "settings_local_disable_toast_notifications" functionality.
         """
         self.persist.set_enable_toast_notifications(value=False)
-        self.logger.info(
-            "Disabled Toast Notifications..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Toast Notifications",
             message="Disabled Toast Notifications...",
         )
@@ -823,10 +856,7 @@ class GUI(object):
         "settings_local_enable_failsafe" functionality.
         """
         self.persist.set_enable_failsafe(value=True)
-        self.logger.info(
-            "Enabled Failsafe..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Failsafe",
             message="Enabled Failsafe...",
         )
@@ -836,12 +866,9 @@ class GUI(object):
         "settings_local_disable_failsafe" functionality.
         """
         self.persist.set_enable_failsafe(value=False)
-        self.logger.info(
-            "Disabled Failsafe..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Failsafe",
-            message="Disabled Failsafe...",
+            message="Disabled Failsafe..."
         )
 
     def settings_local_enable_ad_blocking(self):
@@ -849,10 +876,7 @@ class GUI(object):
         "settings_local_enable_ad_blocking" functionality.
         """
         self.persist.set_enable_ad_blocking(value=True)
-        self.logger.info(
-            "Enabled Ad Blocking..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Ad Blocking",
             message="Enabled Ad Blocking...",
         )
@@ -862,10 +886,7 @@ class GUI(object):
         "settings_local_disable_ad_blocking" functionality.
         """
         self.persist.set_enable_ad_blocking(value=False)
-        self.logger.info(
-            "Disabled Ad Blocking..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Ad Blocking",
             message="Disabled Ad Blocking...",
         )
@@ -874,25 +895,23 @@ class GUI(object):
         """
         "discord" event functionality.
         """
-        self.logger.info(
-            "Opening Discord Now..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Discord",
-            message="Opening Discord Now...",
+            message="Opening Discord...",
         )
-        return webbrowser.open_new_tab(
+        webbrowser.open_new_tab(
             url=self.application_discord,
+        )
+        self.log_and_toast(
+            title="Discord",
+            message="Done...",
         )
 
     def exit(self):
         """
         "exit" event functionality.
         """
-        self.logger.info(
-            "Exiting..."
-        )
-        self.toast(
+        self.log_and_toast(
             title="Exit",
             message="Exiting...",
         )
@@ -901,14 +920,14 @@ class GUI(object):
         # We don't want any exceptions raised.
         raise SystemExit
 
-    def purge_old_logs(self, days=3):
+    def purge_stale_logs(self, days=3):
         """
         Purge any logs present that are older than the specified amount of days.
         """
         for log in os.listdir(self.license.program_logs_directory):
             if os.path.getmtime(os.path.join(self.license.program_logs_directory, log)) < time.time() - days * 86400:
                 self.logger.info(
-                    "Purging old log file: %(log)s..." % {
+                    "Purging Stale Log: \"%(log)s\"..." % {
                         "log": log,
                     }
                 )
@@ -919,14 +938,15 @@ class GUI(object):
         """
         Begin main runtime loop for application.
         """
-        # Always handling a configuration refresh on initial
-        # application startup.
-        self.refresh_configurations()
-
-        self.handle_console_size()
-        self.handle_auto_updates()
-
         try:
+            # Always handling a configuration refresh on initial
+            # application startup.
+            self.refresh_configurations()
+            # Handle auto console sizing...
+            self.handle_console_size()
+            # Handle auto update checks...
+            self.handle_auto_updates()
+
             self.logger.info("===================================================================================")
             self.logger.info(
                 "%(application_name)s GUI (v%(version)s) Initialized..." % {
@@ -943,7 +963,7 @@ class GUI(object):
                 "contact the support team for additional help."
             )
             self.logger.info("===================================================================================")
-            self.purge_old_logs()
+            self.purge_stale_logs()
             # Sentry can have some tags set for any issues that
             # crop up during our gui functionality...
             sentry_sdk.set_tag("package", "gui")

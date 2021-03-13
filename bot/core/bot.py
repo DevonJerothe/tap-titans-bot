@@ -103,7 +103,12 @@ class Bot(object):
         # stop_func functionality when running pending
         # jobs, this avoids large delays when waiting
         # to pause/stop
-        self.schedule = TitanScheduler()
+        self.schedule = TitanScheduler(
+            stop_func=self.stop_func,
+            pause_func=self.pause_func,
+            force_stop_func=self.force_stop_func,
+            force_prestige_func=self.force_prestige_func,
+        )
         # Flag to represent initial scheduling to help
         # determine whether or not reset safe functions
         # should be determined and modified.
@@ -366,7 +371,7 @@ class Bot(object):
         if self.configuration["shop_pets_purchase_enabled"] and self.configuration["shop_pets_purchase_pets"]:
             self.shop_pets_purchase_pets = self.configuration["shop_pets_purchase_pets"].split(",")
         else:
-            self.shop_pets_purchase_pets = None
+            self.shop_pets_purchase_pets = []
 
         self.logger.debug(
             "Additional Configurations: Loaded..."
@@ -468,6 +473,11 @@ class Bot(object):
             self.shop_pets: {
                 "enabled": self.configuration["shop_pets_purchase_enabled"],
                 "interval": self.configuration["shop_pets_purchase_interval"],
+                "reset": False,
+            },
+            self.shop_video_chest: {
+                "enabled": self.configuration["shop_video_chest_enabled"],
+                "interval": self.configuration["shop_video_chest_interval"],
                 "reset": False,
             },
             self.perks: {
@@ -606,6 +616,10 @@ class Bot(object):
                 "enabled": self.configuration["shop_pets_purchase_enabled"],
                 "execute": self.configuration["shop_pets_purchase_on_start"],
             },
+            self.shop_video_chest: {
+                "enabled": self.configuration["shop_video_chest_enabled"],
+                "execute": self.configuration["shop_video_chest_on_start"],
+            },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
                 "execute": self.configuration["perks_on_start"],
@@ -617,6 +631,10 @@ class Bot(object):
                         "function": function.__name__,
                     }
                 )
+                # Startup functions should still have the run checks
+                # executed... Since a manual pause or stop while these
+                # are running should be respected by the bot.
+                self.run_checks()
                 function()
 
     def handle_timeout(
@@ -1537,7 +1555,7 @@ class Bot(object):
                 # (This is done through ad blocking, unrelated to our code here).
                 if self.ad_blocking_enabled_func():
                     self.logger.info(
-                        "Attempting to collect ad rewards through pi-hole disabled ads..."
+                        "Attempting to collect ad rewards through ad blocking..."
                     )
                     try:
                         self.find_and_click_image(
@@ -1555,7 +1573,7 @@ class Bot(object):
                         )
                     except TimeoutError:
                         self.logger.info(
-                            "Unable to handle fairy ad through ad blocking mechanism, skipping..."
+                            "Unable to handle fairy ad through ad blocking, skipping..."
                         )
                         self.click_image(
                             image=image,
@@ -1794,17 +1812,39 @@ class Bot(object):
                 else:
                     # Attempt to max the skill out using the "level X"
                     # option that pops up when a user levels a skill.
-                    self.click(
-                        point=point,
-                        pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
-                    )
-                    if self.point_is_color_range(
-                        point=max_point,
-                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
-                    ):
-                        self.click(
-                            point=max_point,
-                            pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
+                    timeout_level_max_cnt = 0
+                    timeout_level_max_max = self.configurations["parameters"]["level_skills"]["timeout_level_max"]
+
+                    try:
+                        while not self.search(
+                            image=[
+                                self.files["level_skills_max_level"],
+                                self.files["level_skills_cancel_active_skill"],
+                            ],
+                            region=region,
+                            precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
+                        )[0]:
+                            self.click(
+                                point=point,
+                                pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
+                            )
+                            if self.point_is_color_range(
+                                point=max_point,
+                                color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                            ):
+                                self.click(
+                                    point=max_point,
+                                    pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
+                                )
+                            timeout_level_max_cnt = self.handle_timeout(
+                                count=timeout_level_max_cnt,
+                                timeout=timeout_level_max_max,
+                            )
+                    except TimeoutError:
+                        self.logger.info(
+                            "%(skill)s could not be maxed, skipping..." % {
+                                "skill": skill,
+                            }
                         )
 
     def activate_skills(self):
@@ -1883,6 +1923,7 @@ class Bot(object):
         """
         # Make sure we're still on the heroes screen...
         self.travel_to_heroes(scroll=False, collapsed=False)
+        self.collapse_prompts()
         self.logger.info(
             "Levelling heroes on screen now..."
         )
@@ -2070,9 +2111,9 @@ class Bot(object):
         """
         self.find_and_click_image(
             image=self.files["small_shop_exit"],
-            region=self.configurations["regions"]["shop_pets"]["small_shop_exit_area"],
-            precision=self.configurations["parameters"]["shop_pets"]["small_shop_exit_precision"],
-            pause=self.configurations["parameters"]["shop_pets"]["small_shop_exit_pause"],
+            region=self.configurations["regions"]["shop"]["small_shop_exit_area"],
+            precision=self.configurations["parameters"]["shop"]["small_shop_exit_precision"],
+            pause=self.configurations["parameters"]["shop"]["small_shop_exit_pause"],
         )
 
     def shop_pets(self):
@@ -2111,9 +2152,9 @@ class Bot(object):
                     timeout=timeout_shop_pets_search_max,
                 )
                 self.drag(
-                    start=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_bottom"],
-                    end=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_top"],
-                    pause=self.configurations["parameters"]["shop_pets"]["slow_drag_pause"],
+                    start=self.configurations["points"]["shop"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop"]["slow_drag_pause"],
                 )
                 self._shop_ensure_prompts_closed()
         except TimeoutError:
@@ -2163,9 +2204,9 @@ class Bot(object):
                     # TWICE, we don't want to accidentally click on anything in the shop.
                     self.click(
                         point=self.configurations["points"]["main_screen"]["top_middle"],
-                        clicks=self.configurations["parameters"]["shop_pets"]["post_purchase_clicks"],
-                        interval=self.configurations["parameters"]["shop_pets"]["post_purchase_interval"],
-                        pause=self.configurations["parameters"]["shop_pets"]["post_purchase_pause"],
+                        clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                        interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                        pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
                     )
                 else:
                     self.logger.info(
@@ -2174,6 +2215,130 @@ class Bot(object):
                         }
                     )
                     self._shop_ensure_prompts_closed()
+        self._shop_ensure_prompts_closed()
+        # Always travel to the main screen following execution
+        # so we don't linger on this panel.
+        self.travel_to_main_screen()
+
+    def shop_video_chest(self):
+        """
+        Perform all shop functionality related to collecting the video chest in game.
+        """
+        self.travel_to_shop(
+            stop_image_kwargs={
+                "image": self.files["shop_watch_video_header"],
+                "precision": self.configurations["parameters"]["shop_video_chest"]["watch_video_precision"],
+            },
+        )
+        self.logger.info(
+            "Attempting to collect the video chest from the shop..."
+        )
+
+        timeout_shop_video_chest_cnt = 0
+        timeout_shop_video_chest_max = self.configurations["parameters"]["shop_video_chest"]["timeout_search_watch_video"]
+
+        try:
+            while not (
+                self.search(
+                    image=self.files["shop_watch_video_header"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_precision"],
+                )[0] and
+                self.search(
+                    image=self.files["shop_diamonds_header"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["diamonds_precision"],
+                )[0]
+            ):
+                # Looping until both the watch video header and diamonds header
+                # are present, since at that point, video chest is on the screen to search.
+                timeout_shop_video_chest_cnt = self.handle_timeout(
+                    count=timeout_shop_video_chest_cnt,
+                    timeout=timeout_shop_video_chest_max,
+                )
+                self.drag(
+                    start=self.configurations["points"]["shop"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop"]["slow_drag_pause"],
+                )
+                self._shop_ensure_prompts_closed()
+        except TimeoutError:
+            self.logger.info(
+                "Unable to travel to the video chest in the shop, skipping..."
+            )
+            # Always travel to the main screen following execution
+            # so we don't linger on this panel.
+            self.travel_to_main_screen()
+            return
+
+        # At this point we can be sure that the video chest panel is open
+        # and can be parsed.
+        collect_found, collect_position, collect_image = self.search(
+            image=self.files["shop_collect_video_icon"],
+            precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
+        )
+        if collect_found:
+            # Collect is available, just collect and finish.
+            self.logger.info(
+                "Video chest collection is available, collecting now..."
+            )
+            self.click(
+                point=collect_position,
+                pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+            )
+            # Collection happens here.
+            self.click(
+                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
+            )
+            # After collecting the chest, we will click on the middle of the screen
+            # TWICE, we don't want to accidentally click on anything in the shop.
+            self.click(
+                point=self.configurations["points"]["main_screen"]["top_middle"],
+                clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+            )
+
+        watch_found, watch_position, watch_image = self.search(
+            image=self.files["shop_watch_video_icon"],
+            precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
+        )
+        if watch_found:
+            if self.ad_blocking_enabled_func():
+                # Watch is available, we'll only do this if ad blocking is enabled.
+                self.logger.info(
+                    "Video chest watch is available, collecting now..."
+                )
+                self.click(
+                    point=watch_position,
+                    pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                )
+                while self.search(
+                    image=self.files["shop_video_chest_header"],
+                    region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
+                )[0]:
+                    # Looping until the header has disappeared so we properly support the ad blocking
+                    # video chest watch.
+                    self.click(
+                        point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                        pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                    )
+                # After collecting the chest, we will click on the middle of the screen
+                # TWICE, we don't want to accidentally click on anything in the shop.
+                self.click(
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                    interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                    pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                )
+            else:
+                self.logger.info(
+                    "Video chest watch is available but ad blocking is disabled, skipping..."
+                )
+        if not collect_found and not watch_found:
+            self.logger.info(
+                "No video chest is available to collect, skipping..."
+            )
         self._shop_ensure_prompts_closed()
         # Always travel to the main screen following execution
         # so we don't linger on this panel.
@@ -3188,6 +3353,11 @@ class Bot(object):
                     self.logger.info(
                         "Tapping..."
                     )
+            if index % self.configurations["parameters"]["tap"]["tap_collapse_prompts_modulo"] == 0:
+                # Also handle the fact the tapping in general is sporadic
+                # and the incorrect panel/window could be open.
+                self.collapse_prompts()
+                self.collapse()
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
@@ -3227,6 +3397,31 @@ class Bot(object):
             self.logger.debug(
                 "Panel has been successfully collapsed..."
             )
+
+    def collapse_prompts(self):
+        """
+        Attempt to collapse any open prompts in game.
+        """
+        self.find_and_click_image(
+            image=[
+                self.files["large_exit"],
+                self.files["small_shop_exit"],
+            ],
+            region=self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+            precision=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+            pause=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_pause"],
+            pause_not_found=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_not_found_pause"],
+            timeout=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_timeout"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": [
+                    self.files["large_exit"],
+                    self.files["small_shop_exit"],
+                ],
+                "region": self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+                "precision": self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+            },
+        )
 
     def collapse_event_panel(self):
         """
@@ -3768,6 +3963,47 @@ class Bot(object):
             prestige_contents=prestige_contents,
         )
 
+    def run_checks(self):
+        """
+        Helper method to run checks against current bot state, this is in its own method so it can be ran in the main loop,
+        as well as in our startup execution functions...
+        """
+        while self.pause_func():
+            if self.stop_func() or self.force_stop_func():
+                raise StoppedException
+            if not self.pause_date:
+                self.pause_date = datetime.datetime.now()
+                self.toast_func(
+                    title="Session",
+                    message="Session Paused Successfully...",
+                    duration=5,
+                )
+            # Currently paused through the GUI.
+            # Just wait and sleep slightly in between checks.
+            if self.stream.last_message != "Paused...":
+                self.logger.info(
+                    "Paused..."
+                )
+            time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
+
+        if self.pause_date:
+            # We were paused before, fixup our schedule and then
+            # we'll resume.
+            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
+            self.pause_date = None
+        # Check for explicit prestige force...
+        if self.force_prestige_func():
+            self.force_prestige_func(_set=True)
+            self.prestige()
+        if self.force_stop_func():
+            self.force_stop_func(_set=True)
+            # Just raise a stopped exception if we
+            # are just exiting and it's found in between
+            # function execution.
+            raise StoppedException
+        if self.stop_func():
+            raise StoppedException
+
     def run(self):
         """
         Begin main runtime loop for bot functionality.
@@ -3779,6 +4015,9 @@ class Bot(object):
         })
         self.logger.info("Configuration: %(configuration)s" % {
             "configuration": self.configuration["configuration_name"],
+        })
+        self.logger.info("Experimental Configurations: %(experimental_configurations)s" % {
+            "experimental_configurations": self.license.license_data["experimental"],
         })
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
@@ -3809,42 +4048,12 @@ class Bot(object):
             # are configured properly.
             self.schedule_functions()
 
-            while not self.stop_func():
+            # Main catch all for our manual stops, fail-safes are caught within
+            # actual api calls instead of here...
+            while not self.stop_func() and not self.force_stop_func():
                 try:
-                    if self.pause_func():
-                        if not self.pause_date:
-                            self.pause_date = datetime.datetime.now()
-                            self.toast_func(
-                                title="Session",
-                                message="Session Paused Successfully...",
-                                duration=5,
-                            )
-                        # Currently paused through the GUI.
-                        # Just wait and sleep slightly in between checks.
-                        if self.stream.last_message != "Paused...":
-                            self.logger.info(
-                                "Paused..."
-                            )
-                        time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
-                    else:
-                        if self.pause_date:
-                            # We were paused before, fixup our schedule and then
-                            # we'll resume.
-                            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
-                            self.pause_date = None
-                        # Check for explicit prestige force...
-                        if self.force_prestige_func():
-                            self.force_prestige_func(_set=True)
-                            self.prestige()
-                        if self.force_stop_func():
-                            self.force_stop_func(_set=True)
-                            # Just raise a stopped exception if we
-                            # are just exiting and it's found in between
-                            # function execution.
-                            raise StoppedException
-                        # Ensure any pending scheduled jobs are executed at the beginning
-                        # of our loop, each time.
-                        self.schedule.run_pending()
+                    self.run_checks()
+                    self.schedule.run_pending()
                 except PausedException:
                     # Paused exception could be raised through the scheduler, in which
                     # case, we'll pass here but the next iteration should catch that and
@@ -3855,7 +4064,6 @@ class Bot(object):
                 message="Session Stopped Successfully...",
                 duration=5,
             )
-
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
         # through our "finally" block below.
@@ -3871,7 +4079,7 @@ class Bot(object):
         except FailSafeException:
             self.logger.info(
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
-                "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
+                "toggling the settings in your local settings. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
             )
             self.toast_func(
