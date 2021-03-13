@@ -1842,7 +1842,9 @@ class Bot(object):
                             )
                     except TimeoutError:
                         self.logger.info(
-                            "%(skill)s could not be maxed, skipping..."
+                            "%(skill)s could not be maxed, skipping..." % {
+                                "skill": skill,
+                            }
                         )
 
     def activate_skills(self):
