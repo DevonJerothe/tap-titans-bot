@@ -278,16 +278,11 @@ class GUI(object):
         """
         Handle activating a configuration and setting it to an "active" state.
         """
-        self.logger.info(
-            "Activating %(name)s..." % {
-                "name": configuration,
-            }
-        )
-        self.toast(
+        self.log_and_toast(
             title="Configurations",
             message="Activating %(name)s..." % {
                 "name": configuration,
-            },
+            }
         )
         configuration = self._configurations_cache[configuration]
 
@@ -303,6 +298,10 @@ class GUI(object):
         )
         self.logger.debug(
             self._configurations_cache
+        )
+        self.log_and_toast(
+            title="Configurations",
+            message="Done...",
         )
 
     @property
