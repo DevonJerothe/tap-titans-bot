@@ -475,6 +475,11 @@ class Bot(object):
                 "interval": self.configuration["shop_pets_purchase_interval"],
                 "reset": False,
             },
+            self.shop_video_chest: {
+                "enabled": self.configuration["shop_video_chest_enabled"],
+                "interval": self.configuration["shop_video_chest_interval"],
+                "reset": False,
+            },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
                 "interval": self.configuration["perks_interval"],
@@ -610,6 +615,10 @@ class Bot(object):
             self.shop_pets: {
                 "enabled": self.configuration["shop_pets_purchase_enabled"],
                 "execute": self.configuration["shop_pets_purchase_on_start"],
+            },
+            self.shop_video_chest: {
+                "enabled": self.configuration["shop_video_chest_enabled"],
+                "execute": self.configuration["shop_video_chest_on_start"],
             },
             self.perks: {
                 "enabled": self.configuration["perks_enabled"],
@@ -1546,7 +1555,7 @@ class Bot(object):
                 # (This is done through ad blocking, unrelated to our code here).
                 if self.ad_blocking_enabled_func():
                     self.logger.info(
-                        "Attempting to collect ad rewards through pi-hole disabled ads..."
+                        "Attempting to collect ad rewards through ad blocking..."
                     )
                     try:
                         self.find_and_click_image(
@@ -1564,7 +1573,7 @@ class Bot(object):
                         )
                     except TimeoutError:
                         self.logger.info(
-                            "Unable to handle fairy ad through ad blocking mechanism, skipping..."
+                            "Unable to handle fairy ad through ad blocking, skipping..."
                         )
                         self.click_image(
                             image=image,
@@ -2100,9 +2109,9 @@ class Bot(object):
         """
         self.find_and_click_image(
             image=self.files["small_shop_exit"],
-            region=self.configurations["regions"]["shop_pets"]["small_shop_exit_area"],
-            precision=self.configurations["parameters"]["shop_pets"]["small_shop_exit_precision"],
-            pause=self.configurations["parameters"]["shop_pets"]["small_shop_exit_pause"],
+            region=self.configurations["regions"]["shop"]["small_shop_exit_area"],
+            precision=self.configurations["parameters"]["shop"]["small_shop_exit_precision"],
+            pause=self.configurations["parameters"]["shop"]["small_shop_exit_pause"],
         )
 
     def shop_pets(self):
@@ -2141,9 +2150,9 @@ class Bot(object):
                     timeout=timeout_shop_pets_search_max,
                 )
                 self.drag(
-                    start=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_bottom"],
-                    end=self.configurations["points"]["shop_pets"]["scroll"]["slow_drag_top"],
-                    pause=self.configurations["parameters"]["shop_pets"]["slow_drag_pause"],
+                    start=self.configurations["points"]["shop"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop"]["slow_drag_pause"],
                 )
                 self._shop_ensure_prompts_closed()
         except TimeoutError:
@@ -2193,9 +2202,9 @@ class Bot(object):
                     # TWICE, we don't want to accidentally click on anything in the shop.
                     self.click(
                         point=self.configurations["points"]["main_screen"]["top_middle"],
-                        clicks=self.configurations["parameters"]["shop_pets"]["post_purchase_clicks"],
-                        interval=self.configurations["parameters"]["shop_pets"]["post_purchase_interval"],
-                        pause=self.configurations["parameters"]["shop_pets"]["post_purchase_pause"],
+                        clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                        interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                        pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
                     )
                 else:
                     self.logger.info(
@@ -2204,6 +2213,130 @@ class Bot(object):
                         }
                     )
                     self._shop_ensure_prompts_closed()
+        self._shop_ensure_prompts_closed()
+        # Always travel to the main screen following execution
+        # so we don't linger on this panel.
+        self.travel_to_main_screen()
+
+    def shop_video_chest(self):
+        """
+        Perform all shop functionality related to collecting the video chest in game.
+        """
+        self.travel_to_shop(
+            stop_image_kwargs={
+                "image": self.files["shop_watch_video_header"],
+                "precision": self.configurations["parameters"]["shop_video_chest"]["watch_video_precision"],
+            },
+        )
+        self.logger.info(
+            "Attempting to collect the video chest from the shop..."
+        )
+
+        timeout_shop_video_chest_cnt = 0
+        timeout_shop_video_chest_max = self.configurations["parameters"]["shop_video_chest"]["timeout_search_watch_video"]
+
+        try:
+            while not (
+                self.search(
+                    image=self.files["shop_watch_video_header"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_precision"],
+                )[0] and
+                self.search(
+                    image=self.files["shop_diamonds_header"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["diamonds_precision"],
+                )[0]
+            ):
+                # Looping until both the watch video header and diamonds header
+                # are present, since at that point, video chest is on the screen to search.
+                timeout_shop_video_chest_cnt = self.handle_timeout(
+                    count=timeout_shop_video_chest_cnt,
+                    timeout=timeout_shop_video_chest_max,
+                )
+                self.drag(
+                    start=self.configurations["points"]["shop"]["scroll"]["slow_drag_bottom"],
+                    end=self.configurations["points"]["shop"]["scroll"]["slow_drag_top"],
+                    pause=self.configurations["parameters"]["shop"]["slow_drag_pause"],
+                )
+                self._shop_ensure_prompts_closed()
+        except TimeoutError:
+            self.logger.info(
+                "Unable to travel to the video chest in the shop, skipping..."
+            )
+            # Always travel to the main screen following execution
+            # so we don't linger on this panel.
+            self.travel_to_main_screen()
+            return
+
+        # At this point we can be sure that the video chest panel is open
+        # and can be parsed.
+        collect_found, collect_position, collect_image = self.search(
+            image=self.files["shop_collect_video_icon"],
+            precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
+        )
+        if collect_found:
+            # Collect is available, just collect and finish.
+            self.logger.info(
+                "Video chest collection is available, collecting now..."
+            )
+            self.click(
+                point=collect_position,
+                pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+            )
+            # Collection happens here.
+            self.click(
+                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
+            )
+            # After collecting the chest, we will click on the middle of the screen
+            # TWICE, we don't want to accidentally click on anything in the shop.
+            self.click(
+                point=self.configurations["points"]["main_screen"]["top_middle"],
+                clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+            )
+
+        watch_found, watch_position, watch_image = self.search(
+            image=self.files["shop_watch_video_icon"],
+            precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
+        )
+        if watch_found:
+            if self.ad_blocking_enabled_func():
+                # Watch is available, we'll only do this if ad blocking is enabled.
+                self.logger.info(
+                    "Video chest watch is available, collecting now..."
+                )
+                self.click(
+                    point=watch_position,
+                    pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                )
+                while self.search(
+                    image=self.files["shop_video_chest_header"],
+                    region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
+                )[0]:
+                    # Looping until the header has disappeared so we properly support the ad blocking
+                    # video chest watch.
+                    self.click(
+                        point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                        pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                    )
+                # After collecting the chest, we will click on the middle of the screen
+                # TWICE, we don't want to accidentally click on anything in the shop.
+                self.click(
+                    point=self.configurations["points"]["main_screen"]["top_middle"],
+                    clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                    interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                    pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                )
+            else:
+                self.logger.info(
+                    "Video chest watch is available but ad blocking is disabled, skipping..."
+                )
+        if not collect_found and not watch_found:
+            self.logger.info(
+                "No video chest is available to collect, skipping..."
+            )
         self._shop_ensure_prompts_closed()
         # Always travel to the main screen following execution
         # so we don't linger on this panel.
