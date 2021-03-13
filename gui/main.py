@@ -469,17 +469,24 @@ class GUI(object):
         each one.
         """
         if refresh:
-            configurations_response = self.license.collect_configurations()
-            configurations_response = configurations_response.json()
-            # Updating the cache through a deepcopy of the response...
-            # Response is expected to contain a dictionary of configurations.
-            self._configurations_cache = copy.deepcopy(configurations_response)
-            self.logger.debug(
-                "Configurations cache has been updated..."
-            )
-            self.logger.debug(
-                self._configurations_cache
-            )
+            try:
+                configurations_response = self.license.collect_configurations()
+                configurations_response = configurations_response.json()
+                # Updating the cache through a deepcopy of the response...
+                # Response is expected to contain a dictionary of configurations.
+                self._configurations_cache = copy.deepcopy(configurations_response)
+                self.logger.debug(
+                    "Configurations cache has been updated..."
+                )
+                self.logger.debug(
+                    self._configurations_cache
+                )
+            # If any license errors occur here, we log it and pass, so no configurations are
+            # loaded, this occurs if an expired license or disabled license is encountered.
+            except (LicenseRetrievalError, LicenseExpirationError, LicenseServerError, LicenseConnectionError, LicenseIntegrityError):
+                self.logger.info(
+                    "Error occurred while retrieving configurations, skipping..."
+                )
         # Begin populating menu entries...
         menu_entries = []
 
