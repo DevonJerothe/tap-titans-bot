@@ -103,7 +103,12 @@ class Bot(object):
         # stop_func functionality when running pending
         # jobs, this avoids large delays when waiting
         # to pause/stop
-        self.schedule = TitanScheduler()
+        self.schedule = TitanScheduler(
+            stop_func=self.stop_func,
+            pause_func=self.pause_func,
+            force_stop_func=self.force_stop_func,
+            force_prestige_func=self.force_prestige_func,
+        )
         # Flag to represent initial scheduling to help
         # determine whether or not reset safe functions
         # should be determined and modified.
