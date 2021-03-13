@@ -371,7 +371,7 @@ class Bot(object):
         if self.configuration["shop_pets_purchase_enabled"] and self.configuration["shop_pets_purchase_pets"]:
             self.shop_pets_purchase_pets = self.configuration["shop_pets_purchase_pets"].split(",")
         else:
-            self.shop_pets_purchase_pets = None
+            self.shop_pets_purchase_pets = []
 
         self.logger.debug(
             "Additional Configurations: Loaded..."
