@@ -20,6 +20,7 @@ from gui.settings import (
     MENU_TOOLS,
     MENU_TOOLS_CHECK_FOR_UPDATES,
     MENU_TOOLS_LOCAL_DATA,
+    MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
     MENU_CONFIGURATIONS,
@@ -53,6 +54,10 @@ from license_validator.utilities import (
 
 from bot.core.bot import (
     Bot,
+)
+from bot.core.window import (
+    WindowHandler,
+    WindowNotFoundError,
 )
 
 import PySimpleGUIWx as sg
@@ -125,6 +130,7 @@ class GUI(object):
             MENU_UPDATE_LICENSE: self.update_license,
             MENU_TOOLS_CHECK_FOR_UPDATES: self.tools_check_for_updates,
             MENU_TOOLS_LOCAL_DATA: self.tools_local_data,
+            MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT: self.tools_generate_debug_screenshot,
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_TOOLS_FLUSH_LICENSE: self.tools_flush_license,
             MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS: self.settings_local_enable_toast_notifications,
@@ -436,6 +442,7 @@ class GUI(object):
                     self.menu_entry(text=MENU_UPDATE_LICENSE),
                     self.menu_entry(text=MENU_TOOLS_FLUSH_LICENSE),
                     self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
                 self.menu_entry(text=MENU_CONFIGURATIONS),
@@ -744,6 +751,46 @@ class GUI(object):
             title="Local Data",
             message="Done...",
         )
+
+    def tools_generate_debug_screenshot(self):
+        """
+        "tools_generate_debug_screenshot" functionality.
+        """
+        window = self.text_input_popup(
+            message="Please enter the emulator window you would like to generate a debug screenshot against:",
+            title="Debug Window",
+            default_text="NoxPlayer",
+        )
+
+        if window:
+            self.log_and_toast(
+                title="Debug Screenshot",
+                message="Capturing Debug Screenshot For Window: \"%(window)s\" Now..." % {
+                    "window": window,
+                },
+            )
+
+            win = WindowHandler()
+            win.enumerate()
+
+            try:
+                win = win.filter_first(filter_title=window)
+                # Capturing a screenshot of the window, this proves useful
+                # to make sure a user can check to see if the bot is able
+                # to see the emulator screen correctly.
+                capture = win.screenshot()
+                capture.show()
+
+                self.log_and_toast(
+                    title="Debug Screenshot",
+                    message="Done...",
+                )
+            except WindowNotFoundError:
+                self.logger.info(
+                    "Window: \"%(window)s\" Not Found..." % {
+                        "window": window,
+                    }
+                )
 
     def tools_most_recent_log(self):
         """
