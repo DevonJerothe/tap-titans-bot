@@ -11,7 +11,13 @@ class TitanScheduler(Scheduler):
     Custom implementation for the default `Scheduler` class, primarily updating the scheduled jobs
     executor to check an additional function before running a job.
     """
-    def __init__(self, stop_func=None, pause_func=None):
+    def __init__(
+        self,
+        stop_func=None,
+        pause_func=None,
+        force_stop_func=None,
+        force_prestige_func=None,
+    ):
         """
         Initialize a new scheduler instance.
 
@@ -23,6 +29,8 @@ class TitanScheduler(Scheduler):
         # expected to return a boolean.
         self.stop_func = stop_func
         self.pause_func = pause_func
+        self.force_stop_func = force_stop_func
+        self.force_prestige_func = force_prestige_func
 
     def run_pending(self):
         """
@@ -37,11 +45,20 @@ class TitanScheduler(Scheduler):
         runnable_jobs = (job for job in self.jobs if job.should_run)
         for job in sorted(runnable_jobs):
             if self.stop_func:
-                if not self.stop_func():
+                if self.stop_func():
                     raise StoppedException()
             if self.pause_func:
-                if not self.pause_func():
+                if self.pause_func():
                     raise PausedException()
+            if self.force_stop_func:
+                if self.force_stop_func():
+                    raise StoppedException()
+            if self.force_prestige_func:
+                if self.force_prestige_func():
+                    # If a forced prestige is pending, we'll break out of our pending jobs
+                    # early, this ensures the function is executed and the schedule
+                    # is updated proper.
+                    break
             self._run_job(job)
 
     def pad_jobs(self, timedelta):
