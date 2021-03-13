@@ -622,6 +622,10 @@ class Bot(object):
                         "function": function.__name__,
                     }
                 )
+                # Startup functions should still have the run checks
+                # executed... Since a manual pause or stop while these
+                # are running should be respected by the bot.
+                self.run_checks()
                 function()
 
     def handle_timeout(
@@ -3773,6 +3777,45 @@ class Bot(object):
             prestige_contents=prestige_contents,
         )
 
+    def run_checks(self):
+        """
+        Helper method to run checks against current bot state, this is in its own method so it can be ran in the main loop,
+        as well as in our startup execution functions...
+        """
+        while self.pause_func():
+            if self.stop_func() or self.force_stop_func():
+                raise StoppedException
+            if not self.pause_date:
+                self.pause_date = datetime.datetime.now()
+                self.toast_func(
+                    title="Session",
+                    message="Session Paused Successfully...",
+                    duration=5,
+                )
+            # Currently paused through the GUI.
+            # Just wait and sleep slightly in between checks.
+            if self.stream.last_message != "Paused...":
+                self.logger.info(
+                    "Paused..."
+                )
+            time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
+
+        if self.pause_date:
+            # We were paused before, fixup our schedule and then
+            # we'll resume.
+            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
+            self.pause_date = None
+        # Check for explicit prestige force...
+        if self.force_prestige_func():
+            self.force_prestige_func(_set=True)
+            self.prestige()
+        if self.force_stop_func():
+            self.force_stop_func(_set=True)
+            # Just raise a stopped exception if we
+            # are just exiting and it's found in between
+            # function execution.
+            raise StoppedException
+
     def run(self):
         """
         Begin main runtime loop for bot functionality.
@@ -3817,42 +3860,12 @@ class Bot(object):
             # are configured properly.
             self.schedule_functions()
 
-            while not self.stop_func():
+            # Main catch all for our manual stops, fail-safes are caught within
+            # actual api calls instead of here...
+            while not self.stop_func() and not self.force_stop_func():
                 try:
-                    if self.pause_func():
-                        if not self.pause_date:
-                            self.pause_date = datetime.datetime.now()
-                            self.toast_func(
-                                title="Session",
-                                message="Session Paused Successfully...",
-                                duration=5,
-                            )
-                        # Currently paused through the GUI.
-                        # Just wait and sleep slightly in between checks.
-                        if self.stream.last_message != "Paused...":
-                            self.logger.info(
-                                "Paused..."
-                            )
-                        time.sleep(self.configurations["global"]["pause"]["pause_check_interval"])
-                    else:
-                        if self.pause_date:
-                            # We were paused before, fixup our schedule and then
-                            # we'll resume.
-                            self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
-                            self.pause_date = None
-                        # Check for explicit prestige force...
-                        if self.force_prestige_func():
-                            self.force_prestige_func(_set=True)
-                            self.prestige()
-                        if self.force_stop_func():
-                            self.force_stop_func(_set=True)
-                            # Just raise a stopped exception if we
-                            # are just exiting and it's found in between
-                            # function execution.
-                            raise StoppedException
-                        # Ensure any pending scheduled jobs are executed at the beginning
-                        # of our loop, each time.
-                        self.schedule.run_pending()
+                    self.run_checks()
+                    self.schedule.run_pending()
                 except PausedException:
                     # Paused exception could be raised through the scheduler, in which
                     # case, we'll pass here but the next iteration should catch that and
@@ -3863,7 +3876,6 @@ class Bot(object):
                 message="Session Stopped Successfully...",
                 duration=5,
             )
-
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
         # through our "finally" block below.
