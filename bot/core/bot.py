@@ -1803,17 +1803,37 @@ class Bot(object):
                 else:
                     # Attempt to max the skill out using the "level X"
                     # option that pops up when a user levels a skill.
-                    self.click(
-                        point=point,
-                        pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
-                    )
-                    if self.point_is_color_range(
-                        point=max_point,
-                        color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
-                    ):
-                        self.click(
-                            point=max_point,
-                            pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
+                    timeout_level_max_cnt = 0
+                    timeout_level_max_max = self.configurations["parameters"]["level_skills"]["timeout_level_max"]
+
+                    try:
+                        while not self.search(
+                            image=[
+                                self.files["level_skills_max_level"],
+                                self.files["level_skills_cancel_active_skill"],
+                            ],
+                            region=region,
+                            precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
+                        )[0]:
+                            self.click(
+                                point=point,
+                                pause=self.configurations["parameters"]["level_skills"]["level_max_click_pause"]
+                            )
+                            if self.point_is_color_range(
+                                point=max_point,
+                                color_range=self.configurations["colors"]["level_skills"]["max_level_range"],
+                            ):
+                                self.click(
+                                    point=max_point,
+                                    pause=self.configurations["parameters"]["level_skills"]["level_max_pause"],
+                                )
+                            timeout_level_max_cnt = self.handle_timeout(
+                                count=timeout_level_max_cnt,
+                                timeout=timeout_level_max_max,
+                            )
+                    except TimeoutError:
+                        self.logger.info(
+                            "%(skill)s could not be maxed, skipping..."
                         )
 
     def activate_skills(self):
