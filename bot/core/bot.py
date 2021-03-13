@@ -1892,6 +1892,7 @@ class Bot(object):
         """
         # Make sure we're still on the heroes screen...
         self.travel_to_heroes(scroll=False, collapsed=False)
+        self.collapse_prompts()
         self.logger.info(
             "Levelling heroes on screen now..."
         )
@@ -3197,6 +3198,11 @@ class Bot(object):
                     self.logger.info(
                         "Tapping..."
                     )
+            if index % self.configurations["parameters"]["tap"]["tap_collapse_prompts_modulo"] == 0:
+                # Also handle the fact the tapping in general is sporadic
+                # and the incorrect panel/window could be open.
+                self.collapse_prompts()
+                self.collapse()
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
@@ -3236,6 +3242,31 @@ class Bot(object):
             self.logger.debug(
                 "Panel has been successfully collapsed..."
             )
+
+    def collapse_prompts(self):
+        """
+        Attempt to collapse any open prompts in game.
+        """
+        self.find_and_click_image(
+            image=[
+                self.files["large_exit"],
+                self.files["small_shop_exit"],
+            ],
+            region=self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+            precision=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+            pause=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_pause"],
+            pause_not_found=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_not_found_pause"],
+            timeout=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_timeout"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": [
+                    self.files["large_exit"],
+                    self.files["small_shop_exit"],
+                ],
+                "region": self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+                "precision": self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+            },
+        )
 
     def collapse_event_panel(self):
         """
