@@ -4079,7 +4079,7 @@ class Bot(object):
         except FailSafeException:
             self.logger.info(
                 "A failsafe exception was encountered, ending session now... You can disable this functionality by "
-                "updating your configuration. Note, disabling the failsafe may make it more difficult to shut down "
+                "toggling the settings in your local settings. Note, disabling the failsafe may make it more difficult to shut down "
                 "a session while it is in the middle of a function."
             )
             self.toast_func(
