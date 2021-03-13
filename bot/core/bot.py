@@ -3866,6 +3866,8 @@ class Bot(object):
             # are just exiting and it's found in between
             # function execution.
             raise StoppedException
+        if self.stop_func():
+            raise StoppedException
 
     def run(self):
         """
