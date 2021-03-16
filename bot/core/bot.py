@@ -3402,26 +3402,33 @@ class Bot(object):
         """
         Attempt to collapse any open prompts in game.
         """
-        self.find_and_click_image(
-            image=[
-                self.files["large_exit"],
-                self.files["small_shop_exit"],
-            ],
-            region=self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
-            precision=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
-            pause=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_pause"],
-            pause_not_found=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_not_found_pause"],
-            timeout=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_timeout"],
-            timeout_search_while_not=False,
-            timeout_search_kwargs={
-                "image": [
+        try:
+            self.find_and_click_image(
+                image=[
                     self.files["large_exit"],
                     self.files["small_shop_exit"],
                 ],
-                "region": self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
-                "precision": self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
-            },
-        )
+                region=self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+                precision=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+                pause=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_pause"],
+                pause_not_found=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_not_found_pause"],
+                timeout=self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_timeout"],
+                timeout_search_while_not=False,
+                timeout_search_kwargs={
+                    "image": [
+                        self.files["large_exit"],
+                        self.files["small_shop_exit"],
+                    ],
+                    "region": self.configurations["regions"]["collapse_prompts"]["collapse_prompts_area"],
+                    "precision": self.configurations["parameters"]["collapse_prompts"]["collapse_prompts_precision"],
+                },
+            )
+        except TimeoutError:
+            # In rare cases, perhaps something else is on the screen, like a fairy or prompt
+            # that requires some care. In this case, just run through the "possible" scenarios
+            # and pass so we don't exit, the next iteration will likely grab whatever is on
+            # the screen.
+            self.fairies()
 
     def collapse_event_panel(self):
         """
