@@ -17,6 +17,7 @@ from license_validator.settings import (
     VALIDATION_OFFLINE_URL,
     VALIDATION_FLUSH_URL,
     VALIDATION_SESSION_URL,
+    VALIDATION_SESSION_STOP_URL,
     VALIDATION_PRESTIGE_URL,
     VALIDATION_VERSIONS_URL,
     LOCAL_DATA_DIRECTORY,
@@ -85,6 +86,7 @@ class LicenseValidator(object):
         self.program_offline_url = VALIDATION_OFFLINE_URL
         self.program_flush_url = VALIDATION_FLUSH_URL
         self.program_export_session_url = VALIDATION_SESSION_URL
+        self.program_export_session_stop_url = VALIDATION_SESSION_STOP_URL
         self.program_export_prestige_url = VALIDATION_PRESTIGE_URL
         self.program_check_versions_url = VALIDATION_VERSIONS_URL
 
@@ -460,6 +462,15 @@ class LicenseValidator(object):
                 **self.program_data(),
                 **extra,
             },
+        )
+
+    def export_session_stop(self):
+        """
+        Export a session stopped to the backend.
+        """
+        return self._post(
+            url=self.program_export_session_stop_url,
+            data=self.program_data(),
         )
 
     def export_prestige(self, prestige_contents):
