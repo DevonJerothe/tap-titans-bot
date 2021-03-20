@@ -86,6 +86,10 @@ VALIDATION_SESSION_URL = "%(validation_licenses_url)s/%(session_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "session_endpoint": "session",
 }
+VALIDATION_SESSION_STOP_URL = "%(validation_licenses_url)s/%(session_stop_endpoints)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "session_stop_endpoints": "session/stop",
+}
 VALIDATION_PRESTIGE_URL = "%(validation_licenses_url)s/%(prestige_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "prestige_endpoint": "session/prestige",
