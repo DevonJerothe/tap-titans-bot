@@ -3963,12 +3963,21 @@ class Bot(object):
         )
 
     def export_prestige(self, prestige_contents):
-        self.logger.info(
-            "Attempting to export prestige now..."
-        )
-        self.license.export_prestige(
-            prestige_contents=prestige_contents,
-        )
+        try:
+            self.logger.info(
+                "Attempting to export prestige now..."
+            )
+            self.license.export_prestige(
+                prestige_contents=prestige_contents,
+            )
+        except Exception as exc:
+            # We catch-all exceptions here so we can log the error
+            # and continue functioning...
+            self.logger.debug(
+                "An error occurred while attempting to export a session...",
+                exc_info=exc,
+            )
+            sentry_sdk.capture_exception()
 
     def run_checks(self):
         """
@@ -4132,9 +4141,12 @@ class Bot(object):
                 message="Session Stopped Successfully...",
                 duration=5,
             )
-        except Exception:
+        except Exception as exc:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
+            )
+            self.logger.debug(
+                exc_info=exc,
             )
             sentry_sdk.capture_exception()
         finally:
