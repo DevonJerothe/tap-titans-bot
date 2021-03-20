@@ -4172,3 +4172,5 @@ class Bot(object):
             # Ensure we set our license to an offline state.
             # This is done when the session is completely ended.
             self.license.offline()
+            # This will work whe
+            self.license.export_session_stop()
