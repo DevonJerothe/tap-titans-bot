@@ -2018,7 +2018,7 @@ class Bot(object):
         check_index = self.configuration["headgear_swap_check_hero_index"]
 
         for typ in [
-            "ranged", "melee", "spell",
+            "ranger", "warrior", "mage",
         ]:
             if self.search(
                 image=self.files["%(typ)s_icon" % {"typ": typ}],
