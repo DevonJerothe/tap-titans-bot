@@ -1957,10 +1957,56 @@ class Bot(object):
         # a hero detail sheet to pop up.
         time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
 
+    def _level_heroes_autobuy_on(self):
+        """
+        Perform a check to determine if the autobuy functionality is currently enabled for this session and in game.
+        """
+        if self.configuration["level_heroes_skip_if_autobuy_on"]:
+            # First thing here, turn on autobuy if it's currently off.
+            # If this is the case, we can also just return early since we
+            # know that it's on.
+            if self.point_is_color_range(
+                point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_disabled_range"],
+            ):
+                # Enable autobuy at this point.
+                # (If the user does not have the required perk on, we can chalk it up to
+                # a part of the configuration process, since there isn't much we can do at this point
+                # to remedy that edge case).
+                self.click(
+                    point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy"],
+                    pause=self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_pause"],
+                )
+
+            autobuy = False
+
+            # We'll now check for the proper red/blue arrows being present, these being available
+            # means that the autobuy functionality is enabled and running.
+            for i in range(self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_check_range"]):
+                if (
+                    self.point_is_color_range(
+                        point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_enabled_red_range"],
+                    )
+                    or self.point_is_color_range(
+                        point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_enabled_blue_range"],
+                    )
+                ):
+                    autobuy = True
+                    break
+                # Sleeping no matter what here unless we break above to try and weed
+                # out any false positives or incorrect readings.
+                time.sleep(self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_check_pause"])
+            return autobuy
+        return False
+
     def _check_headgear(self):
         """
         Check the headgear in game currently, performing a swap if one is ready to take place.
         """
+        self.travel_to_heroes(collapsed=False)
+
         while self.point_is_color_range(
             point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
             color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
@@ -2000,22 +2046,30 @@ class Bot(object):
         """
         Level the heroes in game quickly.
         """
-        self.travel_to_heroes(collapsed=False)
+        self.travel_to_heroes(scroll=False)
         self.logger.info(
             "Attempting to level the heroes in game quickly..."
         )
 
-        self._level_heroes_ensure_max()
+        # If auto hero levelling is currently enabled and on in game,
+        # we'll use that instead and skip quick levelling completely.
+        if not self._level_heroes_autobuy_on():
+            self.travel_to_heroes(collapsed=False)
+            self._level_heroes_ensure_max()
 
-        # Loop through the specified amount of level loops for quick
-        # levelling...
-        for i in range(self.configuration["level_heroes_quick_loops"]):
-            self.logger.info(
-                "Levelling heroes quickly..."
-            )
-            self._level_heroes_on_screen()
+            # Loop through the specified amount of level loops for quick
+            # levelling...
+            for i in range(self.configuration["level_heroes_quick_loops"]):
+                self.logger.info(
+                    "Levelling heroes quickly..."
+                )
+                self._level_heroes_on_screen()
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled quickly.
+        else:
+            self.logger.info(
+                "Hero autobuy is currently enabled and on in game, skipping quick hero levelling..."
+            )
         if self.configuration["headgear_swap_enabled"]:
             self._check_headgear()
 
@@ -2070,33 +2124,41 @@ class Bot(object):
                     )
                     break
 
-        self.travel_to_heroes(collapsed=False)
-        self.logger.info(
-            "Attempting to level the heroes in game..."
-        )
-
-        self._level_heroes_ensure_max()
-
-        found, position, image = self.search(
-            image=self.files["heroes_max_level"],
-            region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
-            precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
-        )
-        if found:
+        self.travel_to_heroes(scroll=False)
+        # If auto hero levelling is currently enabled and on in game,
+        # we'll use that instead and skip quick levelling completely.
+        if not self._level_heroes_autobuy_on():
+            self.travel_to_heroes(collapsed=False)
             self.logger.info(
-                "Max levelled hero found, levelling first set of heroes only..."
+                "Attempting to level the heroes in game..."
             )
-            self._level_heroes_on_screen()
+
+            self._level_heroes_ensure_max()
+
+            found, position, image = self.search(
+                image=self.files["heroes_max_level"],
+                region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
+                precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
+            )
+            if found:
+                self.logger.info(
+                    "Max levelled hero found, levelling first set of heroes only..."
+                )
+                self._level_heroes_on_screen()
+            else:
+                # Otherwise, we'll scroll and look for a max level hero,
+                # or we will find a duplicate (bottom of tab) and just begin
+                # levelling heroes.
+                drag_heroes_panel(
+                    top=False,
+                    stop_on_max=True,
+                )
+                drag_heroes_panel(
+                    callback=self._level_heroes_on_screen,
+                )
         else:
-            # Otherwise, we'll scroll and look for a max level hero,
-            # or we will find a duplicate (bottom of tab) and just begin
-            # levelling heroes.
-            drag_heroes_panel(
-                top=False,
-                stop_on_max=True,
-            )
-            drag_heroes_panel(
-                callback=self._level_heroes_on_screen,
+            self.logger.info(
+                "Hero autobuy is currently enabled and on in game, skipping hero levelling..."
             )
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled.
