@@ -1793,7 +1793,7 @@ class Bot(object):
             if clicks != "disable" and not self.search(
                 image=[
                     self.files["level_skills_max_level"],
-                    self.files["level_skills_cancel_active_skill"],
+                    self.files["level_skills_cancel_active_spell"],
                 ],
                 region=region,
                 precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
@@ -1824,7 +1824,7 @@ class Bot(object):
                         while not self.search(
                             image=[
                                 self.files["level_skills_max_level"],
-                                self.files["level_skills_cancel_active_skill"],
+                                self.files["level_skills_cancel_active_spell"],
                             ],
                             region=region,
                             precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
