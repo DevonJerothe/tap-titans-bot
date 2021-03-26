@@ -4336,6 +4336,7 @@ class Bot(object):
                 "An unknown exception was encountered... The error has been reported to the support team."
             )
             self.logger.debug(
+                "Exception information:",
                 exc_info=exc,
             )
             sentry_sdk.capture_exception()
