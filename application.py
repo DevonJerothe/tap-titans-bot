@@ -7,7 +7,7 @@ import traceback
 
 
 __APPLICATION_NAME__ = "Tap Titans Bot"
-__APPLICATION_VERSION__ = "1.0.5.2"
+__APPLICATION_VERSION__ = "1.1.0"
 __APPLICATION_DISCORD__ = "https://discord.gg/xCZnHNT"
 
 __SENTRY_DSN__ = "https://bb8849b87d42407d9127fe6a7a1fd42c@o467351.ingest.sentry.io/5517455"
