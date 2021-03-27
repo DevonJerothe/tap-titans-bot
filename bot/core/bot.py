@@ -335,6 +335,11 @@ class Bot(object):
         self.upgrade_artifacts = None
         self.next_artifact_upgrade = None
 
+        # Perk Data.
+        # ------------------
+        self.configuration["perks_enabled_perks"] = json.loads(self.configuration["perks_enabled_perks"])
+        self.configuration["perks_enabled_perks_tournament"] = json.loads(self.configuration["perks_enabled_perks_tournament"])
+
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
             # Shuffled artifact settings will shuffle everything in the map,
             # this is done regardless of maps being enabled or not.
@@ -511,6 +516,14 @@ class Bot(object):
         for function, data in _schedule.items():
             if not schedule_first_time and self.scheduled and not data["reset"]:
                 continue
+            if function.__name__ in self.configurations["global"]["disabled_functions"]:
+                # Function is disabled globally, skipping the scheduling.
+                self.logger.info(
+                    "Function: \"%(function)s\" is currently disabled globally, skipping scheduling..." % {
+                        "function": function.__name__,
+                    }
+                )
+                continue
             if data["enabled"]:
                 # We wont schedule any functions that also
                 # have an interval of zero.
@@ -625,6 +638,14 @@ class Bot(object):
                 "execute": self.configuration["perks_on_start"],
             },
         }.items():
+            if function.__name__ in self.configurations["global"]["disabled_functions"]:
+                # Function is disabled globally, skipping the scheduling.
+                self.logger.info(
+                    "Function: \"%(function)s\" is currently disabled globally, skipping startup execution..." % {
+                        "function": function.__name__,
+                    }
+                )
+                continue
             if data["enabled"] and data["execute"]:
                 self.logger.debug(
                     "Function: \"%(function)s\" is enabled and set to run on startup, executing now..." % {
@@ -1788,7 +1809,7 @@ class Bot(object):
             if clicks != "disable" and not self.search(
                 image=[
                     self.files["level_skills_max_level"],
-                    self.files["level_skills_cancel_active_skill"],
+                    self.files["level_skills_cancel_active_spell"],
                 ],
                 region=region,
                 precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
@@ -1819,7 +1840,7 @@ class Bot(object):
                         while not self.search(
                             image=[
                                 self.files["level_skills_max_level"],
-                                self.files["level_skills_cancel_active_skill"],
+                                self.files["level_skills_cancel_active_spell"],
                             ],
                             region=region,
                             precision=self.configurations["parameters"]["level_skills"]["max_level_precision"],
@@ -1957,10 +1978,56 @@ class Bot(object):
         # a hero detail sheet to pop up.
         time.sleep(self.configurations["parameters"]["level_heroes"]["hero_level_post_pause"])
 
+    def _level_heroes_autobuy_on(self):
+        """
+        Perform a check to determine if the autobuy functionality is currently enabled for this session and in game.
+        """
+        if self.configuration["level_heroes_skip_if_autobuy_on"]:
+            # First thing here, turn on autobuy if it's currently off.
+            # If this is the case, we can also just return early since we
+            # know that it's on.
+            if self.point_is_color_range(
+                point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_disabled_range"],
+            ):
+                # Enable autobuy at this point.
+                # (If the user does not have the required perk on, we can chalk it up to
+                # a part of the configuration process, since there isn't much we can do at this point
+                # to remedy that edge case).
+                self.click(
+                    point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy"],
+                    pause=self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_pause"],
+                )
+
+            autobuy = False
+
+            # We'll now check for the proper red/blue arrows being present, these being available
+            # means that the autobuy functionality is enabled and running.
+            for i in range(self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_check_range"]):
+                if (
+                    self.point_is_color_range(
+                        point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_enabled_red_range"],
+                    )
+                    or self.point_is_color_range(
+                        point=self.configurations["points"]["level_heroes"]["level_heroes_autobuy_color_check"],
+                        color_range=self.configurations["colors"]["level_heroes"]["level_heroes_autobuy_enabled_blue_range"],
+                    )
+                ):
+                    autobuy = True
+                    break
+                # Sleeping no matter what here unless we break above to try and weed
+                # out any false positives or incorrect readings.
+                time.sleep(self.configurations["parameters"]["level_heroes"]["level_heroes_autobuy_check_pause"])
+            return autobuy
+        return False
+
     def _check_headgear(self):
         """
         Check the headgear in game currently, performing a swap if one is ready to take place.
         """
+        self.travel_to_heroes(collapsed=False)
+
         while self.point_is_color_range(
             point=self.configurations["points"]["headgear_swap"]["skill_upgrade_wait"],
             color_range=self.configurations["colors"]["headgear_swap"]["skill_upgrade_wait_range"]
@@ -1972,7 +2039,7 @@ class Bot(object):
         check_index = self.configuration["headgear_swap_check_hero_index"]
 
         for typ in [
-            "ranged", "melee", "spell",
+            "ranger", "warrior", "mage",
         ]:
             if self.search(
                 image=self.files["%(typ)s_icon" % {"typ": typ}],
@@ -2000,22 +2067,30 @@ class Bot(object):
         """
         Level the heroes in game quickly.
         """
-        self.travel_to_heroes(collapsed=False)
+        self.travel_to_heroes(scroll=False)
         self.logger.info(
             "Attempting to level the heroes in game quickly..."
         )
 
-        self._level_heroes_ensure_max()
+        # If auto hero levelling is currently enabled and on in game,
+        # we'll use that instead and skip quick levelling completely.
+        if not self._level_heroes_autobuy_on():
+            self.travel_to_heroes(collapsed=False)
+            self._level_heroes_ensure_max()
 
-        # Loop through the specified amount of level loops for quick
-        # levelling...
-        for i in range(self.configuration["level_heroes_quick_loops"]):
-            self.logger.info(
-                "Levelling heroes quickly..."
-            )
-            self._level_heroes_on_screen()
+            # Loop through the specified amount of level loops for quick
+            # levelling...
+            for i in range(self.configuration["level_heroes_quick_loops"]):
+                self.logger.info(
+                    "Levelling heroes quickly..."
+                )
+                self._level_heroes_on_screen()
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled quickly.
+        else:
+            self.logger.info(
+                "Hero autobuy is currently enabled and on in game, skipping quick hero levelling..."
+            )
         if self.configuration["headgear_swap_enabled"]:
             self._check_headgear()
 
@@ -2070,33 +2145,41 @@ class Bot(object):
                     )
                     break
 
-        self.travel_to_heroes(collapsed=False)
-        self.logger.info(
-            "Attempting to level the heroes in game..."
-        )
-
-        self._level_heroes_ensure_max()
-
-        found, position, image = self.search(
-            image=self.files["heroes_max_level"],
-            region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
-            precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
-        )
-        if found:
+        self.travel_to_heroes(scroll=False)
+        # If auto hero levelling is currently enabled and on in game,
+        # we'll use that instead and skip quick levelling completely.
+        if not self._level_heroes_autobuy_on():
+            self.travel_to_heroes(collapsed=False)
             self.logger.info(
-                "Max levelled hero found, levelling first set of heroes only..."
+                "Attempting to level the heroes in game..."
             )
-            self._level_heroes_on_screen()
+
+            self._level_heroes_ensure_max()
+
+            found, position, image = self.search(
+                image=self.files["heroes_max_level"],
+                region=self.configurations["regions"]["level_heroes"]["max_level_search_area"],
+                precision=self.configurations["parameters"]["level_heroes"]["max_level_search_precision"],
+            )
+            if found:
+                self.logger.info(
+                    "Max levelled hero found, levelling first set of heroes only..."
+                )
+                self._level_heroes_on_screen()
+            else:
+                # Otherwise, we'll scroll and look for a max level hero,
+                # or we will find a duplicate (bottom of tab) and just begin
+                # levelling heroes.
+                drag_heroes_panel(
+                    top=False,
+                    stop_on_max=True,
+                )
+                drag_heroes_panel(
+                    callback=self._level_heroes_on_screen,
+                )
         else:
-            # Otherwise, we'll scroll and look for a max level hero,
-            # or we will find a duplicate (bottom of tab) and just begin
-            # levelling heroes.
-            drag_heroes_panel(
-                top=False,
-                stop_on_max=True,
-            )
-            drag_heroes_panel(
-                callback=self._level_heroes_on_screen,
+            self.logger.info(
+                "Hero autobuy is currently enabled and on in game, skipping hero levelling..."
             )
         # If headgear swapping is turned on, we always check once heroes
         # are done being levelled.
@@ -2276,69 +2359,87 @@ class Bot(object):
             precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
         )
         if collect_found:
-            # Collect is available, just collect and finish.
-            self.logger.info(
-                "Video chest collection is available, collecting now..."
-            )
             self.click(
                 point=collect_position,
                 pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
             )
-            # Collection happens here.
-            self.click(
-                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
-                pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
-            )
-            # After collecting the chest, we will click on the middle of the screen
-            # TWICE, we don't want to accidentally click on anything in the shop.
-            self.click(
-                point=self.configurations["points"]["main_screen"]["top_middle"],
-                clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
-                interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
-                pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
-            )
-
-        watch_found, watch_position, watch_image = self.search(
-            image=self.files["shop_watch_video_icon"],
-            precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
-        )
-        if watch_found:
-            if self.ad_blocking_enabled_func():
-                # Watch is available, we'll only do this if ad blocking is enabled.
-                self.logger.info(
-                    "Video chest watch is available, collecting now..."
+            if not self.point_is_color_range(
+                point=self.configurations["points"]["shop_video_chest"]["collect_color_point"],
+                color_range=self.configurations["colors"]["shop_video_chest"]["collect_disabled_range"],
+            ):
+                collect_found, collect_position, collect_image = self.search(
+                    image=self.files["shop_collect_video_icon"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
                 )
-                self.click(
-                    point=watch_position,
-                    pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                if collect_found:
+                    # Only trying to collect if the collection button isn't in
+                    # a disabled state...
+                    if not self.point_is_color_range(
+                        point=self.configurations["points"]["shop_video_chest"]["collect_color_point"],
+                        color_range=self.configurations["colors"]["shop_video_chest"]["collect_disabled_range"],
+                    ):
+                        self.logger.info(
+                            "Video chest collection is available, collecting now..."
+                        )
+                        # Collection happens here.
+                        self.click(
+                            point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                            pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
+                        )
+                        # After collecting the chest, we will click on the middle of the screen
+                        # TWICE, we don't want to accidentally click on anything in the shop.
+                        self.click(
+                            point=self.configurations["points"]["main_screen"]["top_middle"],
+                            clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                            interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                            pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                        )
+                watch_found, watch_position, watch_image = self.search(
+                    image=self.files["shop_watch_video_icon"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
                 )
-                while self.search(
-                    image=self.files["shop_video_chest_header"],
-                    region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
-                    precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
-                )[0]:
-                    # Looping until the header has disappeared so we properly support the ad blocking
-                    # video chest watch.
-                    self.click(
-                        point=self.configurations["points"]["shop_video_chest"]["collect_point"],
-                        pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                if watch_found:
+                    if self.ad_blocking_enabled_func():
+                        # Watch is available, we'll only do this if ad blocking is enabled.
+                        self.logger.info(
+                            "Video chest watch is available, collecting now..."
+                        )
+                        self.click(
+                            point=watch_position,
+                            pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                        )
+                        while self.search(
+                            image=self.files["shop_video_chest_header"],
+                            region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
+                            precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
+                        )[0]:
+                            # Looping until the header has disappeared so we properly support the ad blocking
+                            # video chest watch.
+                            self.click(
+                                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                                pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                            )
+                        # After collecting the chest, we will click on the middle of the screen
+                        # TWICE, we don't want to accidentally click on anything in the shop.
+                        self.click(
+                            point=self.configurations["points"]["main_screen"]["top_middle"],
+                            clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                            interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                            pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                        )
+                    else:
+                        self.logger.info(
+                            "Video chest watch is available but ad blocking is disabled, skipping..."
+                        )
+                if not collect_found and not watch_found:
+                    self.logger.info(
+                        "No video chest is available to collect, skipping..."
                     )
-                # After collecting the chest, we will click on the middle of the screen
-                # TWICE, we don't want to accidentally click on anything in the shop.
-                self.click(
-                    point=self.configurations["points"]["main_screen"]["top_middle"],
-                    clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
-                    interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
-                    pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
-                )
             else:
                 self.logger.info(
-                    "Video chest watch is available but ad blocking is disabled, skipping..."
+                    "Video chest collection is not available, skipping..."
                 )
-        if not collect_found and not watch_found:
-            self.logger.info(
-                "No video chest is available to collect, skipping..."
-            )
+
         self._shop_ensure_prompts_closed()
         # Always travel to the main screen following execution
         # so we don't linger on this panel.
@@ -2398,146 +2499,269 @@ class Bot(object):
         # We'll search for each enabled perk, if it isn't found, we'll scroll up a bit.
         # Note: Reversing our list of enabled perks (bottom to top).
         for perk in [
-            perk for perk, enabled in [
-                ("clan_crate", self.configuration["perks_enable_clan_crate%(suffix)s" % {"suffix": perk_suffix}]),
-                ("doom", self.configuration["perks_enable_doom%(suffix)s" % {"suffix": perk_suffix}]),
-                ("mana_potion", self.configuration["perks_enable_mana_potion%(suffix)s" % {"suffix": perk_suffix}]),
-                ("make_it_rain", self.configuration["perks_enable_make_it_rain%(suffix)s" % {"suffix": perk_suffix}]),
-                ("adrenaline_rush", self.configuration["perks_enable_adrenaline_rush%(suffix)s" % {"suffix": perk_suffix}]),
-                ("power_of_swiping", self.configuration["perks_enable_power_of_swiping%(suffix)s" % {"suffix": perk_suffix}]),
-                ("mega_boost", self.configuration["perks_enable_mega_boost%(suffix)s" % {"suffix": perk_suffix}]),
-            ] if enabled
+            "clan_crate",
+            "doom",
+            "mana_potion",
+            "make_it_rain",
+            "adrenaline_rush",
+            "power_of_swiping",
+            "mega_boost",
         ]:
-            self.logger.info(
-                "Attempting to use \"%(perk)s\" perk..." % {
-                    "perk": perk,
-                }
+            enabled, tier = (
+                self.configuration["perks_enabled_perks%(suffix)s" % {"suffix": perk_suffix}][perk].get("enabled"),
+                self.configuration["perks_enabled_perks%(suffix)s" % {"suffix": perk_suffix}][perk].get("tier"),
             )
-            timeout_perks_enabled_perk_cnt = 0
-            timeout_perks_enabled_perk_max = self.configurations["parameters"]["perks"]["enabled_perk_timeout"]
-
-            try:
-                while not self.search(
-                    image=self.files["perks_%(perk)s" % {"perk": perk}],
-                    region=self.configurations["regions"]["perks"]["icons_area"],
-                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
-                )[0]:
-                    # Dragging up until the enabled perk
-                    # is found.
-                    self.drag(
-                        start=self.configurations["points"]["travel"]["scroll"]["drag_top"],
-                        end=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
-                        pause=self.configurations["parameters"]["travel"]["drag_pause"],
-                    )
-                    timeout_perks_enabled_perk_cnt = self.handle_timeout(
-                        count=timeout_perks_enabled_perk_cnt,
-                        timeout=timeout_perks_enabled_perk_max,
-                    )
-                # Icon is found, we'll get the position so we can add proper
-                # padding and attempt to use the perk.
-                _, position, image = self.search(
-                    image=self.files["perks_%(perk)s" % {"perk": perk}],
-                    region=self.configurations["regions"]["perks"]["icons_area"],
-                    precision=self.configurations["parameters"]["perks"]["icons_precision"],
-                )
-                # Dynamically calculate the location of the upgrade button
-                # and perform a click.
-                point = (
-                    position[0] + self.configurations["parameters"]["perks"]["position_x_padding"],
-                    position[1] + self.configurations["parameters"]["perks"]["position_y_padding"],
+            if enabled:
+                self.logger.info(
+                    "Attempting to use \"%(perk)s\" perk..." % {
+                        "perk": perk,
+                    }
                 )
 
-                if perk == "mega_boost":
-                    # If the free image can be found and clicked on (vip/pass), we can
-                    # exit early and just assume that the perk was used successfully.
-                    if self.find_and_click_image(
-                        image=self.files["perks_free"],
-                        region=self.configurations["regions"]["perks"]["free_area"],
-                        precision=self.configurations["parameters"]["perks"]["free_precision"],
-                        pause=self.configurations["parameters"]["perks"]["free_pause"],
-                    ):
-                        continue
-                    # Should we try and use the ad blocking functionality to handle
-                    # the collection of the mega boost perk?
-                    if self.ad_blocking_enabled_func():
-                        # Follow normal flow and try to watch the ad
-                        # "Okay" button will begin the process.
+                timeout_perks_enabled_perk_cnt = 0
+                timeout_perks_enabled_perk_max = self.configurations["parameters"]["perks"]["enabled_perk_timeout"]
+
+                try:
+                    while not self.search(
+                        image=self.files["perks_%(perk)s" % {"perk": perk}],
+                        region=self.configurations["regions"]["perks"]["icons_area"],
+                        precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                    )[0]:
+                        # Dragging up until the enabled perk
+                        # is found.
+                        self.drag(
+                            start=self.configurations["points"]["travel"]["scroll"]["drag_top"],
+                            end=self.configurations["points"]["travel"]["scroll"]["drag_bottom"],
+                            pause=self.configurations["parameters"]["travel"]["drag_pause"],
+                        )
+                        timeout_perks_enabled_perk_cnt = self.handle_timeout(
+                            count=timeout_perks_enabled_perk_cnt,
+                            timeout=timeout_perks_enabled_perk_max,
+                        )
+                    # Icon is found, we'll get the position so we can add proper
+                    # padding and attempt to use the perk.
+                    _, position, image = self.search(
+                        image=self.files["perks_%(perk)s" % {"perk": perk}],
+                        region=self.configurations["regions"]["perks"]["icons_area"],
+                        precision=self.configurations["parameters"]["perks"]["icons_precision"],
+                    )
+                    # Dynamically calculate the location of the upgrade button
+                    # and perform a click.
+                    point = (
+                        position[0] + self.configurations["parameters"]["perks"]["position_x_padding"],
+                        position[1] + self.configurations["parameters"]["perks"]["position_y_padding"],
+                    )
+                    # We know the perk is on screen, we'll pad some points to generate a region
+                    # that should contain the perk "button" on screen.
+                    region = (
+                        position[0] + 318,
+                        position[1],
+                        position[0] + 471,
+                        position[1] + 60,
+                    )
+
+                    # First thing we need to do is determine if the perk is currently
+                    # active and set to the specified tier.
+                    if tier:
+                        # If the perk is already set to the correct tier,
+                        # we can skip this perk altogether
+                        if self.search(
+                            image=self.files["perks_%(tier)s_tier" % {"tier": tier}],
+                            region=region,
+                            precision=self.configurations["parameters"]["perks"]["tier_search_precision"],
+                        )[0]:
+                            self.logger.info(
+                                "The \"%(perk)s\" perk is already active and set to tier \"%(tier)s\"..." % {
+                                    "perk": perk,
+                                    "tier": tier,
+                                }
+                            )
+                            continue
+                        else:
+                            # Otherwise, let's determine what level the perk is currently at, so we can determine
+                            # if we need to try and activate it multiple times.
+                            perk_tier_map = {
+                                self.files["perks_no_tier"]: "none",
+                                self.files["perks_one_tier"]: "one",
+                                self.files["perks_two_tier"]: "two",
+                                self.files["perks_three_tier"]: "three",
+                            }
+                            perk_tier_int_map = {
+                                "none": 0,
+                                "one": 1,
+                                "two": 2,
+                                "three": 3,
+                            }
+                            found, position, image = self.search(
+                                image=[
+                                    self.files["perks_no_tier"],
+                                    self.files["perks_one_tier"],
+                                    self.files["perks_two_tier"],
+                                    self.files["perks_three_tier"],
+                                ],
+                                region=region,
+                                precision=self.configurations["parameters"]["perks"]["tier_search_precision"],
+                            )
+                            # None of the images could be found?
+                            # Failsafe here, log and just go on to the next perk.
+                            if not found:
+                                self.logger.info(
+                                    "None of the perks tier images could be found, skipping..."
+                                )
+                                continue
+
+                            # Based on the tier found, determine if we need to try to actively
+                            # activate the perk multiple times...
+                            found = perk_tier_map[image]
+                            found_int = perk_tier_int_map[found]
+                            tier_int = perk_tier_int_map[tier]
+
+                            if found_int > tier_int:
+                                self.logger.info(
+                                    "The \"%(perk)s\" perk is already above the tier \"%(tier)s\", skipping..." % {
+                                        "perk": perk,
+                                        "tier": tier,
+                                    }
+                                )
+                                continue
+
+                            loops = tier_int - found_int
+
+                            self.logger.info(
+                                "Attempting to activate the \"%(perk)s\" and set it to tier \"%(tier)s\"..." % {
+                                    "perk": perk,
+                                    "tier": tier,
+                                }
+                            )
+
+                            # Loop through the differences integer so we can attempt to activate the perk
+                            # X times...
+                            for i in range(loops):
+                                self.click(
+                                    point=point,
+                                    pause=self.configurations["parameters"]["perks"]["open_perk_prompt_pause"],
+                                )
+                                if perk == "mega_boost":
+                                    # The mega boost perk is being activated, we'll check to see if
+                                    # it can be activated for free, or it must have ads watched.
+                                    found, position, image = self.search(
+                                        image=self.files["perks_free"],
+                                        region=self.configurations["regions"]["perks"]["free_area"],
+                                        precision=self.configurations["parameters"]["perks"]["free_precision"],
+                                    )
+
+                                    # Free mega boost can be collected...
+                                    if found:
+                                        self.click_image(
+                                            image=image,
+                                            position=position,
+                                            pause=self.configurations["parameters"]["perks"]["free_pause"],
+                                        )
+                                        continue
+                                    # Maybe we can use ad blocking.
+                                    else:
+                                        if self.ad_blocking_enabled_func():
+                                            # Follow normal flow and try to watch the ad
+                                            # "Okay" button will begin the process.
+                                            while self.search(
+                                                image=self.files["perks_mega_boost_header"],
+                                                region=self.configurations["regions"]["perks"]["header_area"],
+                                                precision=self.configurations["parameters"]["perks"]["header_precision"],
+                                            )[0]:
+                                                # Looping until the perks header has disappeared, which represents
+                                                # the ad collection being finished.
+                                                self.find_and_click_image(
+                                                    image=self.files["perks_okay_tier"],
+                                                    region=self.configurations["regions"]["perks"]["okay_area"],
+                                                    precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                                                    pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                                                )
+                                else:
+                                    # Otherwise, we can check to see if diamonds are required at this point.
+                                    if self.search(
+                                        image=self.files["perks_diamond"],
+                                        region=self.configurations["regions"]["perks"]["diamond_area"],
+                                        precision=self.configurations["parameters"]["perks"]["diamond_precision"],
+                                    )[0]:
+                                        # Diamonds must be used, is this enabled?
+                                        if not self.configuration["perks_spend_diamonds"]:
+                                            self.logger.info(
+                                                "The \"%(perk)s\" perk requires spending diamonds to use but diamond spending "
+                                                "is disabled, skipping..." % {
+                                                    "perk": perk,
+                                                }
+                                            )
+                                            self.find_and_click_image(
+                                                image=self.files["perks_cancel_tier"],
+                                                region=self.configurations["regions"]["perks"]["cancel_area"],
+                                                precision=self.configurations["parameters"]["perks"]["cancel_precision"],
+                                                pause=self.configurations["parameters"]["perks"]["cancel_pause"],
+                                            )
+                                            # We actually break here since we can move to the next perk at
+                                            # this point since diamonds are required and disabled.
+                                            break
+                                    # Perk can be used if we get to this point...
+                                    # Activating it now.
+                                    self.find_and_click_image(
+                                        image=self.files["perks_okay_tier"],
+                                        region=self.configurations["regions"]["perks"]["okay_area"],
+                                        precision=self.configurations["parameters"]["perks"]["okay_precision"],
+                                        pause=self.configurations["parameters"]["perks"]["okay_pause"],
+                                    )
+                                    if perk == "mana_potion":
+                                        # Mana potion unfortunately actually closes our
+                                        # master panel, we'll need to open it back up.
+                                        self.click(
+                                            point=self.configurations["points"]["travel"]["tabs"]["master"],
+                                            pause=self.configurations["parameters"]["perks"]["post_use_open_master_pause"],
+                                        )
+                                        continue
+                    # If the skill doesn't support the option for a tier, we skip the tier functionality
+                    # and just attempt to activate the skill proper.
+                    else:
+                        # Most common use case here is currently using the clan crate perk..
+                        # Which still uses the older perks functionality.
                         self.click(
                             point=point,
-                            pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                            pause=self.configurations["parameters"]["perks"]["open_perk_prompt_pause"],
                         )
-                        while self.search(
+                        if self.search(
                             image=self.files["perks_header"],
                             region=self.configurations["regions"]["perks"]["header_area"],
-                            precision=self.configurations["parameters"]["perks"]["header_precision"],
+                            precision=self.configurations["parameters"]["perks"]["header_precision"]
                         )[0]:
-                            # Looping until the perks header has disappeared, which represents
-                            # the ad collection being finished.
+                            # Does this perk require diamonds to actually use?
+                            if self.search(
+                                image=self.files["perks_diamond"],
+                                region=self.configurations["regions"]["perks"]["diamond_area"],
+                                precision=self.configurations["parameters"]["perks"]["diamond_precision"],
+                            )[0]:
+                                if not self.configuration["perks_spend_diamonds"]:
+                                    self.logger.info(
+                                        "The \"%(perk)s\" perk requires spending diamonds to use but diamond spending "
+                                        "is disabled, skipping..." % {
+                                            "perk": perk,
+                                        }
+                                    )
+                                    self.find_and_click_image(
+                                        image=self.files["perks_cancel"],
+                                        region=self.configurations["regions"]["perks"]["cancel_area"],
+                                        precision=self.configurations["parameters"]["perks"]["cancel_precision"],
+                                        pause=self.configurations["parameters"]["perks"]["cancel_pause"],
+                                    )
+                                    continue
+                            # Perk can be used if we get to this point...
+                            # Activating it now.
                             self.find_and_click_image(
                                 image=self.files["perks_okay"],
                                 region=self.configurations["regions"]["perks"]["okay_area"],
                                 precision=self.configurations["parameters"]["perks"]["okay_precision"],
                                 pause=self.configurations["parameters"]["perks"]["okay_pause"],
                             )
-                else:
-                    self.click(
-                        point=point,
-                        pause=self.configurations["parameters"]["perks"]["use_perk_pause"],
+                except TimeoutError:
+                    self.logger.info(
+                        "Unable to use perks in game, skipping..."
                     )
-                    # If the header is available, the perk is not already active.
-                    if self.search(
-                        image=self.files["perks_header"],
-                        region=self.configurations["regions"]["perks"]["header_area"],
-                        precision=self.configurations["parameters"]["perks"]["header_precision"]
-                    )[0]:
-                        # Does this perk require diamonds to actually use?
-                        if self.search(
-                            image=self.files["perks_diamond"],
-                            region=self.configurations["regions"]["perks"]["diamond_area"],
-                            precision=self.configurations["parameters"]["perks"]["diamond_precision"],
-                        )[0]:
-                            if not self.configuration["perks_spend_diamonds"]:
-                                self.logger.info(
-                                    "The \"%(perk)s\" requires spending diamonds to use but diamond spending "
-                                    "is disabled, skipping..." % {
-                                        "perk": perk,
-                                    }
-                                )
-                                self.find_and_click_image(
-                                    image=self.files["perks_cancel"],
-                                    region=self.configurations["regions"]["perks"]["cancel_area"],
-                                    precision=self.configurations["parameters"]["perks"]["cancel_precision"],
-                                    pause=self.configurations["parameters"]["perks"]["cancel_pause"],
-                                )
-                                continue
-                        # Perk can be used if we get to this point...
-                        # Activating it now.
-                        self.find_and_click_image(
-                            image=self.files["perks_okay"],
-                            region=self.configurations["regions"]["perks"]["okay_area"],
-                            precision=self.configurations["parameters"]["perks"]["okay_precision"],
-                            pause=self.configurations["parameters"]["perks"]["okay_pause"],
-                        )
-                        if perk == "mana_potion":
-                            # Mana potion unfortunately actually closes our
-                            # master panel, we'll need to open it back up.
-                            self.click(
-                                point=self.configurations["points"]["travel"]["tabs"]["master"],
-                                pause=self.configurations["parameters"]["perks"]["post_use_open_master_pause"],
-                            )
-                    else:
-                        self.logger.info(
-                            "The \"%(perk)s\" perk is already active, skipping..." % {
-                                "perk": perk,
-                            }
-                        )
-            except TimeoutError:
-                self.logger.info(
-                    "The \"%(perk)s\" perk could not be found on the screen, skipping..." % {
-                        "perk": perk,
-                    }
-                )
-                continue
 
     def headgear_swap(self):
         """
@@ -4146,6 +4370,7 @@ class Bot(object):
                 "An unknown exception was encountered... The error has been reported to the support team."
             )
             self.logger.debug(
+                "Exception information:",
                 exc_info=exc,
             )
             sentry_sdk.capture_exception()
