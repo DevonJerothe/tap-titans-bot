@@ -516,6 +516,14 @@ class Bot(object):
         for function, data in _schedule.items():
             if not schedule_first_time and self.scheduled and not data["reset"]:
                 continue
+            if function.__name__ in self.configurations["global"]["disabled_functions"]:
+                # Function is disabled globally, skipping the scheduling.
+                self.logger.info(
+                    "Function: \"%(function)s\" is currently disabled globally, skipping scheduling..." % {
+                        "function": function.__name__,
+                    }
+                )
+                continue
             if data["enabled"]:
                 # We wont schedule any functions that also
                 # have an interval of zero.
@@ -630,6 +638,14 @@ class Bot(object):
                 "execute": self.configuration["perks_on_start"],
             },
         }.items():
+            if function.__name__ in self.configurations["global"]["disabled_functions"]:
+                # Function is disabled globally, skipping the scheduling.
+                self.logger.info(
+                    "Function: \"%(function)s\" is currently disabled globally, skipping startup execution..." % {
+                        "function": function.__name__,
+                    }
+                )
+                continue
             if data["enabled"] and data["execute"]:
                 self.logger.debug(
                     "Function: \"%(function)s\" is enabled and set to run on startup, executing now..." % {
