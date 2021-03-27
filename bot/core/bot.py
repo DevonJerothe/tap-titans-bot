@@ -2343,69 +2343,87 @@ class Bot(object):
             precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
         )
         if collect_found:
-            # Collect is available, just collect and finish.
-            self.logger.info(
-                "Video chest collection is available, collecting now..."
-            )
             self.click(
                 point=collect_position,
                 pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
             )
-            # Collection happens here.
-            self.click(
-                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
-                pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
-            )
-            # After collecting the chest, we will click on the middle of the screen
-            # TWICE, we don't want to accidentally click on anything in the shop.
-            self.click(
-                point=self.configurations["points"]["main_screen"]["top_middle"],
-                clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
-                interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
-                pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
-            )
-
-        watch_found, watch_position, watch_image = self.search(
-            image=self.files["shop_watch_video_icon"],
-            precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
-        )
-        if watch_found:
-            if self.ad_blocking_enabled_func():
-                # Watch is available, we'll only do this if ad blocking is enabled.
-                self.logger.info(
-                    "Video chest watch is available, collecting now..."
+            if not self.point_is_color_range(
+                point=self.configurations["points"]["shop_video_chest"]["collect_color_point"],
+                color_range=self.configurations["colors"]["shop_video_chest"]["collect_disabled_range"],
+            ):
+                collect_found, collect_position, collect_image = self.search(
+                    image=self.files["shop_collect_video_icon"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["collect_video_icon_precision"],
                 )
-                self.click(
-                    point=watch_position,
-                    pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                if collect_found:
+                    # Only trying to collect if the collection button isn't in
+                    # a disabled state...
+                    if not self.point_is_color_range(
+                        point=self.configurations["points"]["shop_video_chest"]["collect_color_point"],
+                        color_range=self.configurations["colors"]["shop_video_chest"]["collect_disabled_range"],
+                    ):
+                        self.logger.info(
+                            "Video chest collection is available, collecting now..."
+                        )
+                        # Collection happens here.
+                        self.click(
+                            point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                            pause=self.configurations["parameters"]["shop_video_chest"]["collect_point_pause"],
+                        )
+                        # After collecting the chest, we will click on the middle of the screen
+                        # TWICE, we don't want to accidentally click on anything in the shop.
+                        self.click(
+                            point=self.configurations["points"]["main_screen"]["top_middle"],
+                            clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                            interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                            pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                        )
+                watch_found, watch_position, watch_image = self.search(
+                    image=self.files["shop_watch_video_icon"],
+                    precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
                 )
-                while self.search(
-                    image=self.files["shop_video_chest_header"],
-                    region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
-                    precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
-                )[0]:
-                    # Looping until the header has disappeared so we properly support the ad blocking
-                    # video chest watch.
-                    self.click(
-                        point=self.configurations["points"]["shop_video_chest"]["collect_point"],
-                        pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                if watch_found:
+                    if self.ad_blocking_enabled_func():
+                        # Watch is available, we'll only do this if ad blocking is enabled.
+                        self.logger.info(
+                            "Video chest watch is available, collecting now..."
+                        )
+                        self.click(
+                            point=watch_position,
+                            pause=self.configurations["parameters"]["shop_video_chest"]["watch_pause"],
+                        )
+                        while self.search(
+                            image=self.files["shop_video_chest_header"],
+                            region=self.configurations["regions"]["shop_video_chest"]["video_chest_header_area"],
+                            precision=self.configurations["parameters"]["shop_video_chest"]["video_chest_header_precision"],
+                        )[0]:
+                            # Looping until the header has disappeared so we properly support the ad blocking
+                            # video chest watch.
+                            self.click(
+                                point=self.configurations["points"]["shop_video_chest"]["collect_point"],
+                                pause=self.configurations["parameters"]["shop_video_chest"]["collect_pause"],
+                            )
+                        # After collecting the chest, we will click on the middle of the screen
+                        # TWICE, we don't want to accidentally click on anything in the shop.
+                        self.click(
+                            point=self.configurations["points"]["main_screen"]["top_middle"],
+                            clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
+                            interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
+                            pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
+                        )
+                    else:
+                        self.logger.info(
+                            "Video chest watch is available but ad blocking is disabled, skipping..."
+                        )
+                if not collect_found and not watch_found:
+                    self.logger.info(
+                        "No video chest is available to collect, skipping..."
                     )
-                # After collecting the chest, we will click on the middle of the screen
-                # TWICE, we don't want to accidentally click on anything in the shop.
-                self.click(
-                    point=self.configurations["points"]["main_screen"]["top_middle"],
-                    clicks=self.configurations["parameters"]["shop"]["post_purchase_clicks"],
-                    interval=self.configurations["parameters"]["shop"]["post_purchase_interval"],
-                    pause=self.configurations["parameters"]["shop"]["post_purchase_pause"],
-                )
             else:
                 self.logger.info(
-                    "Video chest watch is available but ad blocking is disabled, skipping..."
+                    "Video chest collection is not available, skipping..."
                 )
-        if not collect_found and not watch_found:
-            self.logger.info(
-                "No video chest is available to collect, skipping..."
-            )
+
         self._shop_ensure_prompts_closed()
         # Always travel to the main screen following execution
         # so we don't linger on this panel.
