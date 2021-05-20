@@ -754,25 +754,30 @@ class Bot(object):
 
             try:
                 if not self.search(
-                        image=[
-                            # Exit.
-                            self.files["large_exit"],
-                            # Misc.
-                            self.files["fight_boss_icon"],
-                            self.files["leave_boss_icon"],
-                            # Travel Tabs.
-                            self.files["travel_master_icon"],
-                            self.files["travel_heroes_icon"],
-                            self.files["travel_equipment_icon"],
-                            self.files["travel_pets_icon"],
-                            self.files["travel_artifacts_icon"],
-                            # Explicit Game State Images.
-                            self.files["coin_icon"],
-                            self.files["master_icon"],
-                            self.files["relics_icon"],
-                            self.files["options_icon"],
-                        ],
-                        precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
+                    image=[
+                        # Exit.
+                        self.files["large_exit"],
+                        # Main Screen.
+                        self.files["attack_damage_icon"],
+                        self.files["current_damage_icon"],
+                        self.files["heroes_damage_icon"],
+                        # Misc.
+                        self.files["no_boss_icon"],
+                        self.files["fight_boss_icon"],
+                        self.files["leave_boss_icon"],
+                        # Travel Tabs.
+                        self.files["travel_master_icon"],
+                        self.files["travel_heroes_icon"],
+                        self.files["travel_equipment_icon"],
+                        self.files["travel_pets_icon"],
+                        self.files["travel_artifacts_icon"],
+                        # Explicit Game State Images.
+                        self.files["coin_icon"],
+                        self.files["master_icon"],
+                        self.files["relics_icon"],
+                        self.files["options_icon"],
+                    ],
+                    precision=self.configurations["parameters"]["check_game_state"]["state_precision"],
                 )[0]:
                     timeout_check_game_state_generic_cnt = self.handle_timeout(
                         count=timeout_check_game_state_generic_cnt,
