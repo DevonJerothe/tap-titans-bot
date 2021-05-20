@@ -12,11 +12,12 @@ VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "VljHmc_'VlVlc%{e4$$"
+VALIDATION_IDENTIFIER_SECRET = "s$XmP|9MmP|bl"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
 # Additional url's are generated below.
+# VALIDATION_URL = "http://localhost:8000"
 VALIDATION_URL = "https://www.titanbots.net"
 VALIDATION_LICENSES_URL = "%(validation_url)s/%(licenses_endpoint)s" % {
     "validation_url": VALIDATION_URL,
