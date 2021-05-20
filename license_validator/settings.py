@@ -12,7 +12,7 @@ VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "VljHmc_'VlVlc%{e4$$"
+VALIDATION_IDENTIFIER_SECRET = "s$XmP|9MmP|bl"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
