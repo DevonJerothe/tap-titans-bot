@@ -1692,7 +1692,7 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through ad blocking, unrelated to our code here).
-                if self.ad_blocking_enabled_func():
+                if self.get_persistence("enable_ad_blocking"):
                     self.logger.info(
                         "Attempting to collect ad rewards through ad blocking..."
                     )
