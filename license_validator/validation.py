@@ -10,6 +10,7 @@ from license_validator.settings import (
     VALIDATION_FILES_CHECK_URL,
     VALIDATION_FILES_RETRIEVE_URL,
     VALIDATION_FILES_SYNC_URL,
+    VALIDATION_INSTANCES_URL,
     VALIDATION_CONFIGURATIONS_URL,
     VALIDATION_CONFIGURATION_ACTIVATE_URL,
     VALIDATION_LICENSE_RETRIEVE_URL,
@@ -78,6 +79,7 @@ class LicenseValidator(object):
         self.program_files_retrieve_url = VALIDATION_FILES_RETRIEVE_URL
         self.program_files_sync_url = VALIDATION_FILES_SYNC_URL
 
+        self.program_instances_url = VALIDATION_INSTANCES_URL
         self.program_configurations_url = VALIDATION_CONFIGURATIONS_URL
         self.program_configuration_activate_url = VALIDATION_CONFIGURATION_ACTIVATE_URL
         self.license_retrieve_url = VALIDATION_LICENSE_RETRIEVE_URL
@@ -104,6 +106,7 @@ class LicenseValidator(object):
         # if they aren't already.
         self.handle_local_directories()
         # Populated during retrieval.
+        self.instance = None
         self.session = None
         self.license_data = None
 
@@ -288,21 +291,26 @@ class LicenseValidator(object):
             "Done..."
         )
 
-    def collect_license_data(self):
+    def collect_license_data(self, configuration_pk):
         """
         Perform license data collection, only grabbing relevant license information and
         handling validation checks.
         """
         return self._post(
             url=self.license_retrieve_url,
-            data=self.program_data(),
+            data={
+                **self.program_data(),
+                "configuration_pk": configuration_pk,
+            },
         ).json()
 
-    def collect_license(self, logger):
+    def collect_license(self, logger, configuration_pk):
         """
         Perform license collection, retrieving required files and dependencies as needed.
         """
-        self.license_data = self.collect_license_data()
+        self.license_data = self.collect_license_data(
+            configuration_pk=configuration_pk,
+        )
 
         # Handle collection of managed dependencies.
         # Simply retrieving each one and writing it to
@@ -380,6 +388,15 @@ class LicenseValidator(object):
 
         return executable
 
+    def collect_instances(self):
+        """Collect the instances associated with a specific user.
+        """
+        if self.license_available:
+            return self._post(
+                url=self.program_instances_url,
+                data=self.program_data(),
+            )
+
     def collect_configurations(self):
         """
         Collect the configurations associated with a specific user.
@@ -430,7 +447,7 @@ class LicenseValidator(object):
             except Exception:
                 pass
 
-    def flush(self):
+    def flush(self, instance=None):
         """
         Flush the users current license.
 
@@ -440,7 +457,7 @@ class LicenseValidator(object):
             try:
                 return self._post(
                     url=self.program_flush_url,
-                    data=self.program_data(),
+                    data=self.program_data(instance=instance),
                 )
             except Exception:
                 pass
@@ -498,8 +515,9 @@ class LicenseValidator(object):
             },
         )
 
-    def program_data(self):
+    def program_data(self, instance=None):
         return {
+            "instance": instance or self.instance,
             "session": self.session,
             "slug": self.program_name,
             "identifier": self.program_identifier,

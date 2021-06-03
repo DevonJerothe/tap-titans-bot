@@ -65,6 +65,10 @@ VALIDATION_CONFIGURATION_ACTIVATE_URL = "%(validation_licenses_url)s/%(configura
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "configuration_activate_endpoint": "license/configuration/activate",
 }
+VALIDATION_INSTANCES_URL = "%(validation_licenses_url)s/%(instances_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "instances_endpoint": "license/instances",
+}
 VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "license_retrieve_endpoint": "license/retrieve",

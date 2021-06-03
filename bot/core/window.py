@@ -6,6 +6,7 @@ from bot.core.exceptions import (
 from PIL import Image
 from ctypes import windll
 
+from threading import Lock
 from enum import Enum
 
 import win32gui
@@ -17,6 +18,9 @@ import pyautogui
 import random
 import time
 import math
+
+
+_screenshot_lock = Lock()
 
 
 class Window(object):
@@ -51,7 +55,7 @@ class Window(object):
         """
         Initialize a new window object with the specified hwnd value.
         """
-        self.enable_failsafe_func = None
+        self.get_persistence = None
         self.force_stop_func = None
         # Hard code/set these to handle some additional work
         # done while taking screenshots and calculating points...
@@ -63,13 +67,15 @@ class Window(object):
 
     def configure(
         self,
-        enable_failsafe_func,
+        instance,
+        get_persistence,
         force_stop_func,
     ):
         """
         Configure the given window, ensuring the expected settings are included.
         """
-        self.enable_failsafe_func = enable_failsafe_func
+        self.instance = instance
+        self.get_persistence = get_persistence
         self.force_stop_func = force_stop_func
         self.form = Window(win32gui.FindWindowEx(None, win32gui.FindWindowEx(None, None, self.FORM_CLASS, None), self.FORM_CLASS, None))
 
@@ -152,15 +158,15 @@ class Window(object):
         """
         Perform the proper failsafe check here (if enabled).
         """
-        if self.enable_failsafe_func():
+        if self.get_persistence("enable_failsafe"):
             pyautogui.failSafeCheck()
 
     def _force_stop(self):
         """
         Perform the proper force stop check here (if enabled).
         """
-        if self.force_stop_func():
-            self.force_stop_func(_set=True)
+        if self.force_stop_func(instance=self.instance):
+            self.force_stop_func(instance=self.instance, _set=True)
             raise StoppedException
 
     def search(self, value):
@@ -173,7 +179,9 @@ class Window(object):
             value = [v for v in value]
 
         for val in value:
-            if self.text.find(val) != -1:
+            # Use "lower" so that we don't deal with casing
+            # issues when searching for possible emulators.
+            if self.text.lower().find(val.lower()) != -1:
                 return True
 
         return False
@@ -286,51 +294,52 @@ class Window(object):
         """
         Perform a screenshot on this window or region within, ignoring any windows in front of the window.
         """
-        hwnd_dc = win32gui.GetWindowDC(self.hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
+        with _screenshot_lock:
+            hwnd_dc = win32gui.GetWindowDC(self.hwnd)
+            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
 
-        save_bitmap = win32ui.CreateBitmap()
-        save_bitmap.CreateCompatibleBitmap(mfc_dc, self.width, self.height)
+            save_bitmap = win32ui.CreateBitmap()
+            save_bitmap.CreateCompatibleBitmap(mfc_dc, self.width, self.height)
 
-        save_dc.SelectObject(save_bitmap)
+            save_dc.SelectObject(save_bitmap)
 
-        # Store the actual screenshot result here through
-        # the use of the windll object.
-        windll.user32.PrintWindow(self.hwnd, save_dc.GetSafeHdc(), 0)
+            # Store the actual screenshot result here through
+            # the use of the windll object.
+            windll.user32.PrintWindow(self.hwnd, save_dc.GetSafeHdc(), 0)
 
-        bmp_info = save_bitmap.GetInfo()
-        bmp_str = save_bitmap.GetBitmapBits(True)
+            bmp_info = save_bitmap.GetInfo()
+            bmp_str = save_bitmap.GetBitmapBits(True)
 
-        # Store the actual Image object retrieved from our windows calls
-        # in this variable.
-        image = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]), bmp_str, "raw", "BGRX", 0, 1)
+            # Store the actual Image object retrieved from our windows calls
+            # in this variable.
+            image = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]), bmp_str, "raw", "BGRX", 0, 1)
 
-        # Cleanup any dc objects that are currently in use.
-        # This also makes sure when we come back, nothing is in use.
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
+            # Cleanup any dc objects that are currently in use.
+            # This also makes sure when we come back, nothing is in use.
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
 
-        win32gui.ReleaseDC(self.hwnd, hwnd_dc)
-        win32gui.DeleteObject(save_bitmap.GetHandle())
+            win32gui.ReleaseDC(self.hwnd, hwnd_dc)
+            win32gui.DeleteObject(save_bitmap.GetHandle())
 
-        # Ensure we also remove any un-needed image data, we only
-        # want the in game screen, which should be the proper emulator height and width.
-        image = image.crop(box=(
-            0,
-            self.y_padding,
-            self.width,
-            self.height,
-        ))
+            # Ensure we also remove any un-needed image data, we only
+            # want the in game screen, which should be the proper emulator height and width.
+            image = image.crop(box=(
+                0,
+                self.y_padding,
+                self.width,
+                self.height,
+            ))
 
-        # If a region has been specified as well, we should crop the image to meet our
-        # region bbox specified, regions should already take into account our expected y padding.
-        if region:
-            image = image.crop(box=region)
+            # If a region has been specified as well, we should crop the image to meet our
+            # region bbox specified, regions should already take into account our expected y padding.
+            if region:
+                image = image.crop(box=region)
 
-        # Image has been collected, parsed, and cropped.
-        # Return the image now, exiting will release our lock.
-        return image
+            # Image has been collected, parsed, and cropped.
+            # Return the image now, exiting will release our lock.
+            return image
 
 
 class WindowHandler(object):
@@ -373,7 +382,7 @@ class WindowHandler(object):
         """
         win32gui.EnumWindows(self._callback, None)
 
-    def filter_first(
+    def filter(
         self,
         filter_title=None,
         ignore_hidden=True,
@@ -405,8 +414,16 @@ class WindowHandler(object):
                         and window.height > ignore_smaller[1]
                     )
                 }
-
         if _dct:
-            return next(iter(_dct.values()))
-        else:
+            return _dct.values()
+
+    def filter_first(self, filter_title):
+        """
+        Filter the first available window with the specified title.
+        """
+        window = next(iter(self.filter(
+            filter_title=filter_title,
+        )))
+        if not window:
             raise WindowNotFoundError
+        return window

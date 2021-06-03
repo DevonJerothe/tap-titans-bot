@@ -50,13 +50,17 @@ class Bot(object):
         application_discord,
         session,
         license_obj,
+        instance,
+        instance_name,
+        instance_func,
+        window,
+        configuration_pk,
         force_prestige_func,
         force_stop_func,
         stop_func,
         pause_func,
         toast_func,
-        failsafe_enabled_func,
-        ad_blocking_enabled_func,
+        get_persistence,
     ):
         """
         Initialize a new Bot instance.
@@ -68,9 +72,10 @@ class Bot(object):
         self.application_version = application_version
         self.application_discord = application_discord
 
-        self.files = {}             # Program Files.
-        self.configurations = {}    # Global Program Configurations
-        self.configuration = {}     # Local Bot Configurations.
+        self.files = {}                 # Program Files.
+        self.configurations = {}        # Global Program Configurations
+        self.configuration_name = None  # Local Bot Configuration Name.
+        self.configuration = {}         # Local Bot Configurations.
 
         self.export_orig_contents = {}     # Store the original set of export data.
         self.export_current_contents = {}  # Most recent contents.
@@ -96,14 +101,25 @@ class Bot(object):
 
         # Additionally, certain configurations are persisted
         # locally and can be enabled/disabled through the gui.
-        self.failsafe_enabled_func = failsafe_enabled_func
-        self.ad_blocking_enabled_func = ad_blocking_enabled_func
+        self.get_persistence = get_persistence
+
+        # This instance can be passed back to the gui whenever a
+        # bot session needs to interact with a running bot.
+        self.instance = instance
+        self.instance_name = instance_name
+        self.instance_func = instance_func
+
+        # Selected window and configuration, notable here that we expect a window hwnd,
+        # and a configuration primary key for the bot to correctly process data and start.
+        self.window = window
+        self.configuration_pk = configuration_pk
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
         # jobs, this avoids large delays when waiting
         # to pause/stop
         self.schedule = TitanScheduler(
+            instance=self.instance,
             stop_func=self.stop_func,
             pause_func=self.pause_func,
             force_stop_func=self.force_stop_func,
@@ -121,6 +137,7 @@ class Bot(object):
 
         self.session = session
         self.license = license_obj
+        self.license.instance = self.instance
         self.license.session = self.session
 
         # Update sentry tags in case of unhandled exceptions
@@ -130,7 +147,9 @@ class Bot(object):
 
         self.logger, self.stream = create_logger(
             log_directory=self.license.program_logs_directory,
-            log_name=self.license.program_name,
+            instance_id=self.instance,
+            instance_name=self.instance_name,
+            instance_func=self.instance_func,
             session_id=self.session,
         )
 
@@ -151,7 +170,10 @@ class Bot(object):
                     self.license.license
                 )
                 self.license.flush()
-                self.license.collect_license(logger=self.logger)
+                self.license.collect_license(
+                    logger=self.logger,
+                    configuration_pk=self.configuration_pk,
+                )
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
@@ -226,10 +248,11 @@ class Bot(object):
         try:
             self.handle = WindowHandler()
             self.window = self.handle.filter_first(
-                filter_title=self.configuration["emulator_window"],
+                filter_title=self.window,
             )
             self.window.configure(
-                enable_failsafe_func=self.failsafe_enabled_func,
+                instance=self.instance,
+                get_persistence=self.get_persistence,
                 force_stop_func=self.force_stop_func,
             )
         except WindowNotFoundError:
@@ -258,6 +281,7 @@ class Bot(object):
         self.logger.info("Configuring local configuration...")
         # The settings housed here are configurable by the user locally.
         # The file should just be loaded and placed into our configuration.
+        self.configuration_name = self.license.license_data["configuration"]["configuration_name"]
         self.configuration = self.license.license_data["configuration"]
         self.logger.debug(
             "Local Configuration: Loaded..."
@@ -2404,7 +2428,7 @@ class Bot(object):
                     precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
                 )
                 if watch_found:
-                    if self.ad_blocking_enabled_func():
+                    if self.get_persistence("enable_ad_blocking"):
                         # Watch is available, we'll only do this if ad blocking is enabled.
                         self.logger.info(
                             "Video chest watch is available, collecting now..."
@@ -2665,7 +2689,7 @@ class Bot(object):
                                         continue
                                     # Maybe we can use ad blocking.
                                     else:
-                                        if self.ad_blocking_enabled_func():
+                                        if self.get_persistence("enable_ad_blocking"):
                                             # Follow normal flow and try to watch the ad
                                             # "Okay" button will begin the process.
                                             while self.search(
@@ -3585,8 +3609,13 @@ class Bot(object):
             if index % self.configurations["parameters"]["tap"]["tap_collapse_prompts_modulo"] == 0:
                 # Also handle the fact the tapping in general is sporadic
                 # and the incorrect panel/window could be open.
-                self.collapse_prompts()
-                self.collapse()
+                try:
+                    self.collapse()
+                    self.collapse_event_panel()
+                except TimeoutError:
+                    # This might be a one off issue, in which case, just continue even though
+                    # we aren't able to collapse.
+                    continue
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
@@ -4185,10 +4214,11 @@ class Bot(object):
             original_contents=original_contents,
             extra={
                 "version": self.application_version,
-                "configuration": self.configuration["configuration_name"],
+                "instance": self.instance_name,
+                "configuration": self.configuration_name,
                 "abyssal": self.configuration["abyssal"],
                 "window": self.window.__str__(),
-            }
+            },
         )
 
     def export_prestige(self, prestige_contents):
@@ -4213,8 +4243,8 @@ class Bot(object):
         Helper method to run checks against current bot state, this is in its own method so it can be ran in the main loop,
         as well as in our startup execution functions...
         """
-        while self.pause_func():
-            if self.stop_func() or self.force_stop_func():
+        while self.pause_func(instance=self.instance):
+            if self.stop_func(instance=self.instance) or self.force_stop_func(instance=self.instance):
                 raise StoppedException
             if not self.pause_date:
                 self.pause_date = datetime.datetime.now()
@@ -4222,6 +4252,7 @@ class Bot(object):
                     title="Session",
                     message="Session Paused Successfully...",
                     duration=5,
+                    instance=self.instance,
                 )
             # Currently paused through the GUI.
             # Just wait and sleep slightly in between checks.
@@ -4237,16 +4268,16 @@ class Bot(object):
             self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
             self.pause_date = None
         # Check for explicit prestige force...
-        if self.force_prestige_func():
-            self.force_prestige_func(_set=True)
+        if self.force_prestige_func(instance=self.instance):
+            self.force_prestige_func(instance=self.instance, _set=True,)
             self.prestige()
-        if self.force_stop_func():
-            self.force_stop_func(_set=True)
+        if self.force_stop_func(instance=self.instance):
+            self.force_stop_func(instance=self.instance, _set=True)
             # Just raise a stopped exception if we
             # are just exiting and it's found in between
             # function execution.
             raise StoppedException
-        if self.stop_func():
+        if self.stop_func(instance=self.instance):
             raise StoppedException
 
     def run(self):
@@ -4267,17 +4298,23 @@ class Bot(object):
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
         })
+        self.logger.info("Instance: %(instance)s" % {
+            "instance": self.instance_name,
+        })
         self.logger.info("Session: %(session)s" % {
             "session": self.session,
         })
         self.logger.info("License: %(license)s - %(expiration)s" % {
-            "license": self.license.license,
+            "license": "%(license_slice)s**********" % {
+                "license_slice": self.license.license[:10],
+            },
             "expiration": self.license.expiration,
         })
         self.logger.info("===================================================================================")
         self.toast_func(
             title="Session",
-            message="Session Initialized Successfully..."
+            message="Session Initialized Successfully...",
+            instance=self.instance,
         )
 
         try:
@@ -4295,7 +4332,7 @@ class Bot(object):
 
             # Main catch all for our manual stops, fail-safes are caught within
             # actual api calls instead of here...
-            while not self.stop_func() and not self.force_stop_func():
+            while not self.stop_func(instance=self.instance) and not self.force_stop_func(instance=self.instance):
                 try:
                     self.run_checks()
                     self.schedule.run_pending()
@@ -4308,6 +4345,7 @@ class Bot(object):
                 title="Session",
                 message="Session Stopped Successfully...",
                 duration=5,
+                instance=self.instance,
             )
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -4319,7 +4357,8 @@ class Bot(object):
             self.toast_func(
                 title="Game State Exception",
                 message="Game State Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except FailSafeException:
             self.logger.info(
@@ -4330,7 +4369,8 @@ class Bot(object):
             self.toast_func(
                 title="Failsafe Exception",
                 message="Failsafe Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except ExportContentsException:
             self.logger.info(
@@ -4339,7 +4379,8 @@ class Bot(object):
             self.toast_func(
                 title="Export Contents Exception",
                 message="Export Contents Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except KeyError as err:
             self.logger.info(
@@ -4352,6 +4393,7 @@ class Bot(object):
                 title="Missing Key",
                 message="KeyError Encountered, Ending Session Now...",
                 duration=7,
+                instance=self.instance,
             )
         except LicenseAuthenticationError:
             self.logger.info(
@@ -4360,7 +4402,8 @@ class Bot(object):
             self.toast_func(
                 title="License Authentication Error",
                 message="Authentication Error Encountered. Ending Session Now...",
-                duration=7
+                duration=7,
+                instance=self.instance,
             )
         except StoppedException:
             # Pass when stopped exception is encountered, skip right to our
@@ -4369,6 +4412,7 @@ class Bot(object):
                 title="Session",
                 message="Session Stopped Successfully...",
                 duration=5,
+                instance=self.instance,
             )
         except Exception as exc:
             self.logger.info(

@@ -13,6 +13,7 @@ class TitanScheduler(Scheduler):
     """
     def __init__(
         self,
+        instance,
         stop_func=None,
         pause_func=None,
         force_stop_func=None,
@@ -25,6 +26,8 @@ class TitanScheduler(Scheduler):
         of these functions return a non truthy value, we'll raise out early from the job runner.
         """
         super().__init__()
+
+        self.instance = instance
         # check_func() -> True/False.
         # expected to return a boolean.
         self.stop_func = stop_func
@@ -45,16 +48,16 @@ class TitanScheduler(Scheduler):
         runnable_jobs = (job for job in self.jobs if job.should_run)
         for job in sorted(runnable_jobs):
             if self.stop_func:
-                if self.stop_func():
+                if self.stop_func(instance=self.instance):
                     raise StoppedException()
             if self.pause_func:
-                if self.pause_func():
+                if self.pause_func(instance=self.instance):
                     raise PausedException()
             if self.force_stop_func:
-                if self.force_stop_func():
+                if self.force_stop_func(instance=self.instance):
                     raise StoppedException()
             if self.force_prestige_func:
-                if self.force_prestige_func():
+                if self.force_prestige_func(instance=self.instance):
                     # If a forced prestige is pending, we'll break out of our pending jobs
                     # early, this ensures the function is executed and the schedule
                     # is updated proper.
