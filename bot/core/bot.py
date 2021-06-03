@@ -364,6 +364,19 @@ class Bot(object):
         self.configuration["perks_enabled_perks"] = json.loads(self.configuration["perks_enabled_perks"])
         self.configuration["perks_enabled_perks_tournament"] = json.loads(self.configuration["perks_enabled_perks_tournament"])
 
+        # Activate Skills Data.
+        # ------------------
+        self.configuration["activate_skills"] = json.loads(self.configuration["activate_skills"])
+        # Configure some skills interval information so we can store
+        # when each skill should be activated. These may not all be used depending
+        # on if they're enabled in the users configuration.
+        self.skills_heavenly_strike_next_run = None
+        self.skills_deadly_strike_next_run = None
+        self.skills_hand_of_midas_next_run = None
+        self.skills_fire_sword_next_run = None
+        self.skills_war_cry_next_run = None
+        self.skills_shadow_clone_next_run = None
+
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
             # Shuffled artifact settings will shuffle everything in the map,
             # this is done regardless of maps being enabled or not.
@@ -416,6 +429,32 @@ class Bot(object):
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
         self.logger.debug("\"shop_pets_purchase_pets\": %s" % self.shop_pets_purchase_pets)
+
+    def configure_skill(self, skill, total_seconds):
+        """Utility function to handle a specific skill and setup it's next run date.
+        """
+        setattr(
+            self,
+            "skills_%(skill)s_next_run" % {"skill": skill},
+            datetime.datetime.now() + datetime.timedelta(seconds=total_seconds)
+        )
+
+    def configure_skills(self):
+        """Utility function to handle initial skill activation values.
+
+        Skills are enabled/disabled through a configuration that lets the user enable certain skills, the number
+        of clicks per skill, and the interval between each execution.
+
+        This also handles resetting skill intervals if it's called after the first
+        execution.
+        """
+        if self.configuration["activate_skills_enabled"]:
+            for skill in self.configuration["activate_skills"]["ordered"]:
+                if skill["enabled"]:
+                    self.configure_skill(
+                        skill=skill["skill"],
+                        total_seconds=skill["total_seconds"],
+                    )
 
     def schedule_functions(self):
         """
@@ -486,7 +525,7 @@ class Bot(object):
             },
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
-                "interval": self.configuration["activate_skills_interval"],
+                "interval": self.configurations["global"]["activate_skills"]["activate_skills_interval"],
                 "reset": True,
             },
             self.level_heroes_quick: {
@@ -621,6 +660,11 @@ class Bot(object):
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "execute": self.configuration["activate_skills_on_start"],
+                # Ensure skill activation (if enabled on start)
+                # properly forces all enabled skills to run.
+                "kwargs": {
+                    "force": True,
+                },
             },
             self.inbox: {
                 "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
@@ -680,7 +724,7 @@ class Bot(object):
                 # executed... Since a manual pause or stop while these
                 # are running should be respected by the bot.
                 self.run_checks()
-                function()
+                function(**data.get("kwargs", {}))
 
     def handle_timeout(
         self,
@@ -915,24 +959,31 @@ class Bot(object):
         - License is already online and being retrieved with a different session.
         - Program has had changes made that break the current bot.
         """
+        allowed_failures = self.configurations["global"]["check_license"]["allowed_failures"]
+
         try:
             self.logger.debug(
                 "Checking license status..."
             )
             self.license.collect_license_data()
+            self.license_failures = 0
         except TimeoutError:
-            self.logger.info(
-                "Authentication timeout was reached... Check your internet connection and please try again."
-            )
-            raise LicenseAuthenticationError()
+            self.license_failures += 1
+            if self.license_failures >= allowed_failures:
+                self.logger.info(
+                    "Authentication timeout was reached... Check your internet connection and please try again."
+                )
+                raise LicenseAuthenticationError()
         except LicenseExpirationError as err:
-            self.logger.info(
-                "Your license has expired (%(license_expiration)s), please contact support or extend your license "
-                "and try again." % {
-                    "license_expiration": err,
-                }
-            )
-            raise LicenseAuthenticationError()
+            self.license_failures += 1
+            if self.license_failures == allowed_failures:
+                self.logger.info(
+                    "Your license has expired (%(license_expiration)s), please contact support or extend your license "
+                    "and try again." % {
+                        "license_expiration": err,
+                    }
+                )
+                raise LicenseAuthenticationError()
         except LicenseIntegrityError:
             self.logger.info(
                 "A license integrity error was encountered, you can flush your license "
@@ -941,12 +992,17 @@ class Bot(object):
                 "terminated unexpectedly."
             )
             raise LicenseAuthenticationError()
-        except Exception:
-            self.logger.info(
-                "License or backend configuration has changed and is no longer valid, "
-                "a new version or release may be available, if not, please contact support."
-            )
-            raise LicenseAuthenticationError()
+        except Exception as exc:
+            self.license_failures += 1
+            if self.license_failures == allowed_failures:
+                self.logger.exception(
+                    exc_info=exc,
+                )
+                self.logger.info(
+                    "License or backend configuration has changed and is no longer valid, "
+                    "a new version or release may be available, if not, please contact support."
+                )
+                raise LicenseAuthenticationError()
 
     def snapshot(
         self,
@@ -1897,30 +1953,55 @@ class Bot(object):
                             }
                         )
 
-    def activate_skills(self):
+    def activate_skills(self, force=False):
+        """Activate the enabled skills in game.
+
+        The ``force`` parameter can be overridden to ensure that any enabled skills
+        are executed regardless of their interval.
         """
-        Activate the enabled skills in game.
-        """
-        self.travel_to_main_screen()
-        self.logger.info(
-            "Activating skills in game..."
-        )
-        for enabled in [
-            skill for skill, enabled in [
-                (s, self.configuration["%(skill)s_activate" % {
-                    "skill": s,
-                }]) for s in self.configurations["global"]["skills"]["skills"]
-            ] if enabled
-        ]:
+        # We'll only travel if we have a skill ready to be activated...
+        # Determine that here.
+        ready = []
+        now = datetime.datetime.now()
+
+        for skill, interval in (
+            ("heavenly_strike", self.skills_heavenly_strike_next_run),
+            ("deadly_strike", self.skills_deadly_strike_next_run),
+            ("hand_of_midas", self.skills_hand_of_midas_next_run),
+            ("fire_sword", self.skills_fire_sword_next_run),
+            ("war_cry", self.skills_war_cry_next_run),
+            ("shadow_clone", self.skills_shadow_clone_next_run),
+        ):
+            if interval and (interval <= now or force):
+                ready.append(
+                    skill,
+                )
+
+        if ready:
+            self.travel_to_main_screen()
             self.logger.info(
-                "Activating %(skill)s now..." % {
-                    "skill": enabled,
-                }
+                "Activating skills in game now..."
             )
-            self.click(
-                point=self.configurations["points"]["activate_skills"]["skill_points"][enabled],
-                pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
-            )
+            # Ensure we loop through the ordered skills to retain the proper
+            # activation order for each ready skill.
+            for skill in self.configuration["activate_skills"]["ordered"]:
+                if skill["skill"] in ready:
+                    self.logger.info(
+                        "Activating %(skill)s %(clicks)s time(s) now..." % {
+                            "skill": skill["skill"],
+                            "clicks": skill["clicks"],
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["activate_skills"]["skill_points"][skill["skill"]],
+                        clicks=int(skill["clicks"]),
+                        interval=self.configurations["parameters"]["activate_skills"]["activate_interval"],
+                        pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
+                    )
+                    self.configure_skill(
+                        skill=skill["skill"],
+                        total_seconds=skill["total_seconds"],
+                    )
 
     def _level_heroes_ensure_max(self):
         """
@@ -4319,6 +4400,7 @@ class Bot(object):
 
         try:
             self.configure_additional()
+            self.configure_skills()
             # Ensure that a session is still available even if data
             # exports are disabled.
             if not self.configuration["export_data_enabled"]:
