@@ -140,6 +140,11 @@ class Bot(object):
         self.license.instance = self.instance
         self.license.session = self.session
 
+        # Initialize this as zero, this is updated and reset
+        # as needed as we attempt to validate our license through
+        # periodic checks.
+        self.license_failures = 0
+
         # Update sentry tags in case of unhandled exceptions
         # occurring while user runs session.
         sentry_sdk.set_tag("package", "bot")
@@ -921,6 +926,31 @@ class Bot(object):
         if duplicates:
             self._check_game_state_reboot()
 
+    def _check_game_state_misc(self):
+        """Handle the miscellaneous game state check,
+        """
+        # Handle the skill prompt in game causing the bot
+        # to be stuck...
+        if self.search(
+            image=self.files["warning_header"],
+            precision=self.configurations["parameters"]["check_game_state"]["misc_warning_header_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["check_game_state"]["misc_warning_header_yes"],
+                pause=self.configurations["parameters"]["check_game_state"]["misc_warning_header_yes_pause"],
+            )
+
+        # Handle the server maintenance prompt showing up which should
+        # just shut the bot down.
+        if self.search(
+            image=self.files["server_maintenance_header"],
+            precision=self.configurations["parameters"]["check_game_state"]["misc_server_maintenance_precision"],
+        )[0]:
+            self.logger.info(
+                "It looks like server maintenance is currently active, exiting..."
+            )
+            raise GameStateException()
+
     def check_game_state(self):
         """
         Perform a check on the emulator to determine whether or not the game state is no longer
@@ -935,15 +965,18 @@ class Bot(object):
         # Different odd use cases occur within the game that we check for here
         # and solve through this method.
 
-        # 1. A fairy ad is stuck on the screen...
+        # 1. Checking for some of the miscellaneous game state checks, this currently includes
+        #    things like the skill tree stuck open.
+        self._check_game_state_misc()
+        # 2. A fairy ad is stuck on the screen...
         #    This one is odd, but can be solved by clicking on the middle
         #    of the screen and then trying to collect the ad.
         self._check_game_state_fairies()
-        # 2. The game has frozen completely, we track this by taking a screenshot of the entire
+        # 3. The game has frozen completely, we track this by taking a screenshot of the entire
         #    screen when we're in here and comparing it to the last one taken each time, if the
         #    images are the same, we should reboot the game.
         self._check_game_state_frozen()
-        # 3. The generic game state check, we try to travel to the main game screen
+        # 4. The generic game state check, we try to travel to the main game screen
         #    and then we look for some key images that would mean we are still in the game.
         self._check_game_state_generic()
 
