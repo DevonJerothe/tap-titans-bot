@@ -999,7 +999,9 @@ class Bot(object):
             self.logger.debug(
                 "Checking license status..."
             )
-            self.license.collect_license_data()
+            self.license.collect_license_data(
+                configuration_pk=self.configuration_pk,
+            )
             self.license_failures = 0
         except TimeoutError:
             self.license_failures += 1
@@ -1010,7 +1012,7 @@ class Bot(object):
                 raise LicenseAuthenticationError()
         except LicenseExpirationError as err:
             self.license_failures += 1
-            if self.license_failures == allowed_failures:
+            if self.license_failures >= allowed_failures:
                 self.logger.info(
                     "Your license has expired (%(license_expiration)s), please contact support or extend your license "
                     "and try again." % {
@@ -1028,9 +1030,9 @@ class Bot(object):
             raise LicenseAuthenticationError()
         except Exception as exc:
             self.license_failures += 1
-            if self.license_failures == allowed_failures:
-                self.logger.exception(
-                    exc_info=exc,
+            if self.license_failures >= allowed_failures:
+                self.logger.debug(
+                    exc,
                 )
                 self.logger.info(
                     "License or backend configuration has changed and is no longer valid, "
