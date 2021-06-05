@@ -822,6 +822,7 @@ class GUI(object):
                         message="Starting Session...",
                     )
                     self._instances_internals[instance].stop = False
+                    self._instances_internals[instance].force_stop = False
                     self._instances_internals[instance].pause = False
                     self._instances_internals[instance].session = uuid.uuid4().hex
                     self._instances_internals[instance].thread = threading.Thread(
