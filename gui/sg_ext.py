@@ -19,8 +19,8 @@ def PopupWindowConfiguration(title, submit_text, windows, configurations, icon=s
         title=title,
         icon=icon,
         layout=[
-            [sg.Text("Window:       "), sg.InputCombo(windows, default_value=default_window or windows[0])],
-            [sg.Text("Configuration:"), sg.InputCombo(configurations, default_value=default_configuration or configurations[0])],
+            [sg.Text("Window:       "), sg.InputCombo(windows, default_value=default_window or windows[0] if windows else None)],
+            [sg.Text("Configuration:"), sg.InputCombo(configurations, default_value=default_configuration or configurations[0] if configurations else None)],
             [sg.Submit(submit_text), sg.Cancel()],
         ],
     ).read(close=True)
