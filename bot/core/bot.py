@@ -404,6 +404,7 @@ class Bot(object):
         # ------------------
         # "powerful_hero" - most powerful hero currently in game.
         self.powerful_hero = None
+        self.daily_limit_reached = False
 
         # Per Prestige Data.
         # ------------------
@@ -3333,6 +3334,34 @@ class Bot(object):
                 "upgradeArtifact": None,
             })
 
+    def _prestige_handle_daily_limit(self):
+        """Handle the check for prestige daily limit's being reached. This becomes an issue when the
+        "prestige close to max" functionality is enabled but the daily limit is reached by a user, in which case,
+        they would end up never hitting that threshold.
+
+        We set an internal value when this is checked so that prestige checks can use it proper.
+
+        Expecting the in-game screen here to currently be on the prestige prompt.
+        """
+        self.logger.debug(
+            "Checking prestige daily limit now..."
+        )
+
+        if self.search(
+            image=self.files["prestige_daily_limit_reached"],
+            region=self.configurations["regions"]["prestige"]["prestige_daily_limit_area"],
+            precision=self.configurations["parameters"]["prestige"]["prestige_daily_limit_precision"],
+        )[0]:
+            self.logger.debug(
+                "Daily prestige limit reached, disabling event icon checks..."
+            )
+            self.daily_limit_reached = True
+        else:
+            self.logger.debug(
+                "Daily prestige limit has not been reached, enabling event icon checks..."
+            )
+            self.daily_limit_reached = False
+
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
@@ -3451,6 +3480,10 @@ class Bot(object):
                         "precision": self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
                     },
                 )
+                # Check for the daily limit here in case it's been reached...
+                # In which case we'll update our internal value to handle this.
+                self._prestige_handle_daily_limit()
+                # Continue prestige post this check...
                 self.find_and_click_image(
                     image=self.files["prestige_confirm_icon"],
                     region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
@@ -3571,9 +3604,13 @@ class Bot(object):
         )
 
         if not self.close_to_max_ready:
-            if self.configurations["global"]["events"]["event_running"] and not self.configuration["abyssal"]:
+            if (
+                self.configurations["global"]["events"]["event_running"]
+                and not self.configuration["abyssal"]
+                and not self.daily_limit_reached
+            ):
                 self.logger.info(
-                    "Event is currently running, checking for event icon present on master panel..."
+                    "Checking for event icon present on master panel..."
                 )
                 # Event is running, let's check the master panel for
                 # the current event icon.
@@ -3586,14 +3623,9 @@ class Bot(object):
             else:
                 # No event is running, instead, we will open the skill tree,
                 # and check that the reset icon is present.
-                if self.configuration["abyssal"]:
-                    self.logger.info(
-                        "Abyssal tournament is enabled, checking for prestige reset on skill tree..."
-                    )
-                else:
-                    self.logger.info(
-                        "No event is currently running, checking for prestige reset on skill tree..."
-                    )
+                self.logger.info(
+                    "Checking for prestige reset on skill tree..."
+                )
                 self.click(
                     point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
                     pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
@@ -3644,6 +3676,39 @@ class Bot(object):
                     "Prestige is ready..."
                 )
                 self.prestige_execute_or_schedule()
+
+    def prestige_check_daily_limit(self):
+        """Handle the prestige daily limit checks and ensure the bot is in the right location.
+        """
+        self.logger.info(
+            "Checking if daily prestige limit has been reached..."
+        )
+
+        self.travel_to_master()
+
+        self.find_and_click_image(
+            image=self.files["prestige_icon"],
+            region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
+            precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+            pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
+            timeout=self.configurations["parameters"]["prestige"]["prestige_icon_timeout"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": self.files["prestige_icon"],
+                "region": self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                "precision": self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+            },
+        )
+        # Check for the daily limit here in case it's been reached...
+        # In which case we'll update our internal value to handle this.
+        self._prestige_handle_daily_limit()
+        # Ensure the prompt is closed following this check...
+        self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+            precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+            pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+        )
 
     def tap(self):
         """
@@ -4434,6 +4499,8 @@ class Bot(object):
         try:
             self.configure_additional()
             self.configure_skills()
+            # Ensure we check the prestige daily limit on startup.
+            self.prestige_check_daily_limit()
             # Ensure that a session is still available even if data
             # exports are disabled.
             if not self.configuration["export_data_enabled"]:
