@@ -13,6 +13,7 @@ from gui.settings import (
     MENU_FORCE_PRESTIGE,
     MENU_FORCE_STOP,
     MENU_START_SESSION,
+    MENU_START_EVENT,
     MENU_STOP_SESSION,
     MENU_RESUME_SESSION,
     MENU_PAUSE_SESSION,
@@ -23,6 +24,9 @@ from gui.settings import (
     MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT,
     MENU_TOOLS_MOST_RECENT_LOG,
     MENU_TOOLS_FLUSH_LICENSE,
+    MENU_INSTANCES,
+    MENU_INSTANCES_EDIT_INSTANCES,
+    MENU_INSTANCES_REFRESH_INSTANCES,
     MENU_CONFIGURATIONS,
     MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS,
     MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS,
@@ -33,6 +37,8 @@ from gui.settings import (
     MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE,
     MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING,
     MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING,
+    MENU_LOCAL_SETTINGS_ENABLE_AUTO_UPDATE,
+    MENU_LOCAL_SETTINGS_DISABLE_AUTO_UPDATE,
     MENU_DISCORD,
     MENU_EXIT,
     MENU_TIMEOUT,
@@ -64,11 +70,24 @@ import PySimpleGUIWx as sg
 import gui.sg_ext as sgx
 import sentry_sdk
 import threading
+import operator
 import webbrowser
 import copy
 import time
 import uuid
 import os
+
+
+class GUIInstanceInternals(object):
+    def __init__(
+        self,
+    ):
+        self.force_prestige = False
+        self.force_stop = False
+        self.stop = False
+        self.pause = False
+        self.thread = None
+        self.session = None
 
 
 class GUI(object):
@@ -82,13 +101,11 @@ class GUI(object):
             index="SystemDefault",
         )
 
-        self._force_prestige = False
-        self._force_stop = False
-        self._stop = False
-        self._pause = False
-        self._thread = None
-        self._session = None
-
+        self._instances_internals = []
+        self._instances_cache = {}
+        self._instances_names = {}
+        self._instance_active = None
+        self._windows_cache = {}
         self._configurations_cache = {}
 
         self.application_name = application_name
@@ -96,8 +113,8 @@ class GUI(object):
         self.application_discord = application_discord
 
         self.notifier = ToastNotifier()
-
         self.license = LicenseValidator()
+
         self.logger = create_gui_logger(
             log_directory=self.license.program_logs_directory,
             log_name=self.license.program_name,
@@ -106,16 +123,22 @@ class GUI(object):
             file=self.license.program_persistence_file,
             logger=self.logger,
         )
-        self.tray = sg.SystemTray(
-            menu=self.menu(),
-            filename=ICON_FILE,
-        )
 
         if not self.license.license_available:
             # No license even available at this point,
             # likely the first time starting, let's prompt
             # for a license right away.
-            self.update_license()
+            self.update_license(require=True)
+
+        # Always handling a configuration refresh on initial
+        # application startup.
+        self.refresh_instances()
+        self.refresh_configurations()
+
+        self.tray = sg.SystemTray(
+            menu=self.menu(),
+            filename=ICON_FILE,
+        )
 
         self.event_map = {
             self.menu_title: self.menu_title_link,
@@ -125,6 +148,8 @@ class GUI(object):
             MENU_STOP_SESSION: self.stop_session,
             MENU_RESUME_SESSION: self.resume_session,
             MENU_PAUSE_SESSION: self.pause_session,
+            MENU_INSTANCES_EDIT_INSTANCES: self.instances_edit_instances,
+            MENU_INSTANCES_REFRESH_INSTANCES: self.instances_refresh_instances,
             MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS: self.configurations_edit_configurations,
             MENU_CONFIGURATIONS_REFRESH_CONFIGURATIONS: self.configurations_refresh_configurations,
             MENU_UPDATE_LICENSE: self.update_license,
@@ -139,6 +164,8 @@ class GUI(object):
             MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE: self.settings_local_disable_failsafe,
             MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING: self.settings_local_enable_ad_blocking,
             MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING: self.settings_local_disable_ad_blocking,
+            MENU_LOCAL_SETTINGS_ENABLE_AUTO_UPDATE: self.settings_local_enable_auto_update,
+            MENU_LOCAL_SETTINGS_DISABLE_AUTO_UPDATE: self.settings_local_disable_auto_update,
             MENU_DISCORD: self.discord,
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
@@ -152,7 +179,7 @@ class GUI(object):
             if self.window_size:
                 # We also only ever actually set the terminal size when it's
                 # possible to gather the current size.
-                os.system(self.persist.get_console_startup_size())
+                os.system(self.persist.get_persistence("console_startup_size"))
         except Exception:
             # If anything fails while trying to update the window
             # size for the user, we can simply just continue execution
@@ -170,7 +197,8 @@ class GUI(object):
         if window_size:
             # Only ever persisting the value when something valid can even be
             # gathered from the terminal.
-            self.persist.set_console_startup_size(
+            self.persist.set_persistence(
+                key="console_startup_size",
                 value=self.window_size,
             )
 
@@ -181,8 +209,9 @@ class GUI(object):
         if not self.license.license_available:
             return
 
-        self.logger.info(
-            "Checking for application updates..."
+        self.log_and_toast(
+            title="Auto Updates",
+            message="Checking For Updates...",
         )
         # Check to see if any new versions are available...
         # We would expect to handle this on application startup.
@@ -218,7 +247,8 @@ class GUI(object):
                     if location:
                         # Ensure the location chosen is saved so upon the next
                         # update or restart, same location is used throughout.
-                        self.persist.set_auto_update_path(
+                        self.persist.set_persistence(
+                            key="auto_update_path",
                             value=location,
                         )
                         self.logger.info(
@@ -280,35 +310,72 @@ class GUI(object):
                 "updating, skipping..."
             )
 
+    def internals_check(self, checks):
+        """Perform a check against the specified "checks" list.
+
+        Each "check" should contain a tuple with the internal value being checked, as well as the value expected.
+
+        Ex: [
+            ("thread", None),
+            ("force_prestige", True),
+        ]
+
+        Checks if the active instance thread is None and that force_prestige is True.
+        """
+        for c in checks:
+            internal, val = [
+                c[0],
+                c[1],
+            ]
+            if internal[0] == "!":
+                method = operator.ne
+                internal = internal[1:]
+            else:
+                method = operator.eq
+            if not self._instance_active:
+                return False
+            if method(
+                getattr(self._instances_internals[self._instance_active], internal),
+                val,
+            ):
+                return True
+        return False
+
+    def handle_instance_activate(self, instance):
+        """
+        Handle activating a instance and setting it to an "selected" state.
+        """
+        self.log_and_toast(
+            title="Instances",
+            message="Activating %(name)s..." % {
+                "name": instance,
+            }
+        )
+        instance = self._instances_cache[instance]
+
+        # Simply just update the local selected instance
+        # (the gui uses this to determine how to treat signals).
+        self._instance_active = instance["pk"]
+        self.logger.debug(
+            self._instance_active
+        )
+        self.log_and_toast(
+            title="Instances",
+            message="Done...",
+        )
+
     def handle_configuration_activate(self, configuration):
         """
         Handle activating a configuration and setting it to an "active" state.
         """
-        self.log_and_toast(
-            title="Configurations",
-            message="Activating %(name)s..." % {
-                "name": configuration,
-            }
-        )
-        configuration = self._configurations_cache[configuration]
-
-        # Send a post event to the backend to set the given configuration
-        # to an active state.
-        activate_response = self.license.activate_configuration(configuration=configuration["pk"])
-        activate_response = activate_response.json()
-        # Updating the cache since the returned data here should be the same
-        # as a normal refresh, but our active configuration has changed.
-        self._configurations_cache = copy.deepcopy(activate_response)
-        self.logger.debug(
-            "Configurations cache has been updated following active configuration change..."
-        )
-        self.logger.debug(
-            self._configurations_cache
-        )
-        self.log_and_toast(
-            title="Configurations",
-            message="Done...",
-        )
+        if self.license.license_available:
+            return webbrowser.open_new_tab(
+                url=self.license.program_configurations_template + "/%(program_name)s/%(license)s/%(configuration)s/edit" % {
+                    "program_name": self.license.program_name,
+                    "license": self.license.license,
+                    "configuration": self._configurations_cache[configuration]["pk"],
+                },
+            )
 
     @property
     def menu_title(self):
@@ -319,6 +386,19 @@ class GUI(object):
             "application_name": self.application_name,
             "application_version": self.application_version,
         }
+
+    @property
+    def menu_title_sub(self):
+        """
+        Return the active instance for at a glance information available.
+        """
+        if self._instance_active:
+            # Include a space so we can avoid reactivating an instance
+            # that's already active...
+            return self._instances_names[self._instance_active] + " "
+        # Defaulting to a dash if no instances are available
+        # (stale license?).
+        return "(No Instance)"
 
     @property
     def window_size(self):
@@ -380,7 +460,7 @@ class GUI(object):
         return sg.PopupGetFolder(
             message=message,
             title=title,
-            default_path=self.persist.get_auto_update_path(),
+            default_path=self.persist.get_persistence("auto_update_path"),
             icon=ICON_FILE,
         )
 
@@ -396,11 +476,16 @@ class GUI(object):
             icon=icon or ICON_FILE,
         )
 
-    def toast(self, title, message, icon_path=ICON_FILE, duration=2.5):
+    def toast(self, title, message, icon_path=ICON_FILE, duration=2.5, instance=None):
         """
         Send a toast notification to the system tray.
         """
-        if self.persist.get_enable_toast_notifications():
+        if self.persist.get_persistence("enable_toast_notifications"):
+            if instance:
+                title = "%(title)s | %(instance)s" % {
+                    "title": title,
+                    "instance": self._instances_names[instance],
+                }
             return self.notifier.show_toast(
                 title=title,
                 msg=message,
@@ -409,12 +494,13 @@ class GUI(object):
                 threaded=True,
             )
 
-    def log_and_toast(self, title, message, duration=2.5):
+    def log_and_toast(self, title, message, duration=2.5, instance=None):
         """
         Log and toast a given message and title.
         """
-        self.logger.info(message)
-        self.toast(title=title, message=message, duration=duration)
+        if instance == self._instance_active or not instance:
+            self.logger.info(message)
+            self.toast(title=title, message=message, duration=duration, instance=instance)
 
     def menu(self):
         """
@@ -423,15 +509,16 @@ class GUI(object):
         return [
             self.menu_entry(text=MENU_BLANK_HEADER), [
                 self.menu_entry(text=self.menu_title),
+                self.menu_entry(text=self.menu_title_sub),
                 self.menu_entry(separator=True),
-                self.menu_entry(text=MENU_FORCE_PRESTIGE, disabled=self._thread is None or self._force_prestige is True),
-                self.menu_entry(text=MENU_FORCE_STOP, disabled=self._thread is None or self._force_stop is True),
+                self.menu_entry(text=MENU_FORCE_PRESTIGE, disabled=self.internals_check(checks=[("thread", None), ("force_prestige", True)])),
+                self.menu_entry(text=MENU_FORCE_STOP, disabled=self.internals_check(checks=[("thread", None), ("force_stop", True)])),
                 self.menu_entry(separator=True),
-                self.menu_entry(text=MENU_START_SESSION, disabled=self._thread is not None),
-                self.menu_entry(text=MENU_STOP_SESSION, disabled=self._thread is None),
+                self.menu_entry(text=MENU_START_SESSION, disabled=self.internals_check(checks=[("!thread", None)])),
+                self.menu_entry(text=MENU_STOP_SESSION, disabled=self.internals_check(checks=[("thread", None)])),
                 self.menu_entry(separator=True),
-                self.menu_entry(text=MENU_RESUME_SESSION, disabled=self._thread is None or self._pause is False),
-                self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self._thread is None or self._pause is True),
+                self.menu_entry(text=MENU_RESUME_SESSION, disabled=self.internals_check(checks=[("thread", None), ("pause", False)])),
+                self.menu_entry(text=MENU_PAUSE_SESSION, disabled=self.internals_check(checks=[("thread", None), ("pause", True)])),
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_TOOLS),
                 [
@@ -445,6 +532,13 @@ class GUI(object):
                     self.menu_entry(text=MENU_TOOLS_GENERATE_DEBUG_SCREENSHOT),
                     self.menu_entry(text=MENU_TOOLS_MOST_RECENT_LOG),
                 ],
+                self.menu_entry(text=MENU_INSTANCES),
+                [
+                    self.menu_entry(text=MENU_INSTANCES_EDIT_INSTANCES),
+                    self.menu_entry(text=MENU_INSTANCES_REFRESH_INSTANCES),
+                    self.menu_entry(separator=True),
+                    *self.refresh_instances(refresh=False)
+                ],
                 self.menu_entry(text=MENU_CONFIGURATIONS),
                 [
                     self.menu_entry(text=MENU_CONFIGURATIONS_EDIT_CONFIGURATIONS),
@@ -454,14 +548,17 @@ class GUI(object):
                 ],
                 self.menu_entry(text=MENU_LOCAL_SETTINGS),
                 [
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_enable_toast_notifications()),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_enable_toast_notifications()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_TOAST_NOTIFICATIONS, disabled=self.persist.get_persistence("enable_toast_notifications")),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_TOAST_NOTIFICATIONS, disabled=not self.persist.get_persistence("enable_toast_notifications")),
                     self.menu_entry(separator=True),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_enable_failsafe()),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_enable_failsafe()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_FAILSAFE, disabled=self.persist.get_persistence("enable_failsafe")),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_FAILSAFE, disabled=not self.persist.get_persistence("enable_failsafe")),
                     self.menu_entry(separator=True),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING, disabled=self.persist.get_enable_ad_blocking()),
-                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING, disabled=not self.persist.get_enable_ad_blocking()),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_AD_BLOCKING, disabled=self.persist.get_persistence("enable_ad_blocking")),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_AD_BLOCKING, disabled=not self.persist.get_persistence("enable_ad_blocking")),
+                    self.menu_entry(separator=True),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_ENABLE_AUTO_UPDATE, disabled=self.persist.get_persistence("enable_auto_update")),
+                    self.menu_entry(text=MENU_LOCAL_SETTINGS_DISABLE_AUTO_UPDATE, disabled=not self.persist.get_persistence("enable_auto_update")),
                 ],
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_DISCORD),
@@ -470,19 +567,86 @@ class GUI(object):
             ],
         ]
 
-    def refresh(self):
+    def refresh(self, **kwargs):
         """
         Refresh the system tray menu.
         """
         # Reset our bot application thread
         # if it is no longer alive.
-        if self._thread and not self._thread.is_alive():
-            self._thread.join()
-            self._thread = None
+        if (
+            self._instance_active
+            and self._instances_internals[self._instance_active].thread
+            and not self._instances_internals[self._instance_active].thread.is_alive()
+        ):
+            self._instances_internals[self._instance_active].thread.join()
+            self._instances_internals[self._instance_active].thread = None
 
         self.tray.update(menu=self.menu())
 
-    def refresh_configurations(self, refresh=True):
+    def refresh_instances(self, refresh=True, **kwargs):
+        """
+        Refresh the instances available for a user. The data stored here is done so in a way that it can be
+        viewed within a menu, some additional information is stored about each instance in the instances cache.
+        """
+        if refresh:
+            try:
+                instances_response = self.license.collect_instances()
+                instances_response = instances_response.json()
+                # Updating the cache through a deepcopy of the response...
+                # Response is expected to contain a dictionary of instances.
+                self._instance_active = None
+                self._instances_cache = copy.deepcopy(instances_response)
+                self._instances_names = {instance["pk"]: instance["name"] for instance in self._instances_cache.values()}
+                self._instances_internals = {instance["pk"]: GUIInstanceInternals() for instance in self._instances_cache.values()}
+                self.logger.debug(
+                    "Instances cache has been updated..."
+                )
+                self.logger.debug(
+                    self._instances_cache
+                )
+            # If any license errors occur here, we log it and pass, so no configurations are
+            # loaded, this occurs if an expired license or disabled license is encountered.
+            except (LicenseRetrievalError, LicenseExpirationError, LicenseServerError, LicenseConnectionError, LicenseIntegrityError) as exc:
+                self.logger.info(
+                    "Error occurred while retrieving instances, skipping..."
+                )
+        # Begin populating menu entries...
+        menu_entries = []
+
+        for instance in self._instances_cache.values():
+            text = "%(instance_name)s" % {
+                "instance_name": instance["name"],
+            }
+            if self._instance_active is None or self._instance_active == instance["pk"]:
+                self._instance_active = instance["pk"]
+                text += " (ACTIVE)"
+            # Append the instance to the menu entry, selected instances
+            # are disabled for local modification.
+            menu_entries.append(
+                self.menu_entry(text=text, disabled=self._instance_active == instance["pk"])
+            )
+        return menu_entries
+
+    def refresh_windows(self, **kwargs):
+        """
+        Refresh the windows available for selection for a user. The data stored here is done so in a way
+        that it can be viewed within a prompt, some additional information is stored about each window
+        so bot sessions know which window to access.
+        """
+        win = WindowHandler()
+        win.enumerate()
+
+        self._windows_cache = {
+            win.text: win.hwnd for win in win.filter(
+                filter_title=[
+                    "nox",
+                    "noxplayer",
+                    "memu",
+                ],
+            )
+        }
+
+    def refresh_configurations(self, refresh=True, **kwargs):
         """
         Refresh the configurations available for a user. The data stored here is done so in a way
         that in can be viewed within a menu, some additional information is stored about the keys about
@@ -511,20 +675,13 @@ class GUI(object):
         menu_entries = []
 
         for configuration in self._configurations_cache.values():
-            if configuration["active"]:
-                text = "%(configuration_name)s (ACTIVE)" % {
-                    "configuration_name": configuration["name"],
-                }
-            else:
-                text = configuration["name"]
-            # Append the configuration to the menu entry, active configurations
-            # are disabled for local modification.
+            # Append the configuration to the menu entry.
             menu_entries.append(
-                self.menu_entry(text=text, disabled=configuration["active"]),
+                self.menu_entry(text=configuration["name"]),
             )
         return menu_entries
 
-    def menu_title_link(self):
+    def menu_title_link(self, **kwargs):
         """
         "menu_title" event functionality.
         """
@@ -532,21 +689,21 @@ class GUI(object):
             url=self.license.program_url,
         )
 
-    def stop_func(self):
+    def stop_func(self, instance):
         """
-        Return the current internal ``_stop`` value.
+        Return the current internal ``stop`` value.
         """
-        return self._stop
+        return self._instances_internals[instance].stop
 
-    def pause_func(self):
+    def pause_func(self, instance):
         """
-        Return the current internal``_pause`` value.
+        Return the current internal``pause`` value.
         """
-        return self._pause
+        return self._instances_internals[instance].pause
 
-    def force_prestige_func(self, _set=False):
+    def force_prestige_func(self, instance, _set=False):
         """
-        Return the current internal ``_force_prestige`` value.
+        Return the current internal ``force_prestige`` value.
 
         Also handling a toggle reset here, whenever force prestige is set to True,
         we also want to reset the value.
@@ -555,23 +712,24 @@ class GUI(object):
             # Allow for an optional setting parameter to handle
             # our func "reset". This should be called once whatever
             # function is being executed is completed.
-            self._force_prestige = False
-        return self._force_prestige
+            self._instances_internals[instance].force_prestige = False
+        return self._instances_internals[instance].force_prestige
 
-    def force_prestige(self):
+    def force_prestige(self, instance):
         """
         "force_prestige" event functionality.
         """
-        if self._thread is not None:
+        if self._instances_internals[instance].thread is not None:
             self.log_and_toast(
+                instance=instance,
                 title="Force Prestige",
                 message="Forcing Prestige..."
             )
-            self._force_prestige = True
+            self._instances_internals[instance].force_prestige = True
 
-    def force_stop_func(self, _set=False):
+    def force_stop_func(self, instance, _set=False):
         """
-        Return the current interval ``_force_stop`` value.
+        Return the current internal ``_force_stop`` value.
 
         Also handling a toggle reset here, whenever force prestige is set to True,
         we also want to reset the value.
@@ -580,88 +738,186 @@ class GUI(object):
             # Allow for an optional setting parameter to handle
             # our func "reset". This should be called once whatever
             # function is being executed is completed.
-            self._force_stop = False
-        return self._force_stop
+            self._instances_internals[instance].force_stop = False
+        return self._instances_internals[instance].force_stop
 
-    def force_stop(self):
+    def force_stop(self, instance):
         """
         "force_stop" event functionality.
         """
-        if self._thread is not None:
+        if self._instances_internals[instance].thread is not None:
             self.log_and_toast(
+                instance=instance,
                 title="Force Stop",
                 message="Forcing Stop...",
             )
-            self._force_stop = True
+            self._instances_internals[instance].force_stop = True
 
-    def start_session(self):
+    def instance_func(self):
+        """Return the current internal ``_instance_active`` value.
+        """
+        return self._instance_active
+
+    def start_session(self, instance):
         """
         "start_session" event functionality.
         """
-        if not self._thread:
-            self.log_and_toast(
-                title="Session",
-                message="Starting Session...",
-            )
-            self._stop = False
-            self._pause = False
-            self._session = uuid.uuid4().hex
-            self._thread = threading.Thread(
-                target=Bot,
-                kwargs={
-                    "application_name": self.application_name,
-                    "application_version": self.application_version,
-                    "application_discord": self.application_discord,
-                    "license_obj": self.license,
-                    "session": self._session,
-                    "force_prestige_func": self.force_prestige_func,
-                    "force_stop_func": self.force_stop_func,
-                    "stop_func": self.stop_func,
-                    "pause_func": self.pause_func,
-                    "toast_func": self.toast,
-                    "failsafe_enabled_func": self.persist.get_enable_failsafe,
-                    "ad_blocking_enabled_func": self.persist.get_enable_ad_blocking,
-                },
-            )
-            self._thread.start()
+        # We always refresh windows on session start prompt, so the most
+        # recent windows are available and our cache is upto date upon selection.
+        self.refresh_windows()
+        # Default "remembered" values are persisted and used in between
+        # session starts to avoid annoying re-selection of values...
+        default_window = self.persist.get_persistence("last_window_choice")
+        default_configuration = self.persist.get_persistence("last_configuration_choice")
 
-    def stop_session(self):
+        if default_window and default_window not in self._windows_cache:
+            self.persist.set_persistence(
+                key="last_window_choice",
+                value=None,
+            )
+            default_window = None
+        if default_configuration and default_configuration not in self._configurations_cache:
+            self.persist.set_persistence(
+                key="last_configuration_choice",
+                value=None,
+            )
+            default_configuration = None
+
+        event, values = sgx.PopupWindowConfiguration(
+            title="Start Session",
+            submit_text=MENU_START_EVENT,
+            windows=tuple(window_name for window_name in self._windows_cache.keys()),
+            configurations=tuple(configuration_name for configuration_name in self._configurations_cache.keys()),
+            icon=ICON_FILE,
+            default_window=default_window,
+            default_configuration=default_configuration,
+        )
+
+        if event == MENU_START_EVENT:
+            window, configuration = (
+                values[0],
+                values[1],
+            )
+            if not window or not configuration:
+                self.log_and_toast(
+                    title="Start Session",
+                    message="Invalid Window Or Configuration Selected...",
+                    instance=instance,
+                )
+            if window and configuration:
+                # Ensure the persisted last selected window and configuration
+                # are saved...
+                self.persist.set_persistence(
+                    key="last_window_choice",
+                    value=window,
+                )
+                self.persist.set_persistence(
+                    key="last_configuration_choice",
+                    value=configuration,
+                )
+                if not self._instances_internals[instance].thread:
+                    self.log_and_toast(
+                        instance=instance,
+                        title="Session",
+                        message="Starting Session...",
+                    )
+                    self._instances_internals[instance].stop = False
+                    self._instances_internals[instance].force_stop = False
+                    self._instances_internals[instance].pause = False
+                    self._instances_internals[instance].session = uuid.uuid4().hex
+                    self._instances_internals[instance].thread = threading.Thread(
+                        target=Bot,
+                        kwargs={
+                            "application_name": self.application_name,
+                            "application_version": self.application_version,
+                            "application_discord": self.application_discord,
+                            "license_obj": self.license,
+                            "instance": instance,
+                            "instance_name": self._instances_names[instance],
+                            "instance_func": self.instance_func,
+                            "window": window,
+                            "configuration_pk": self._configurations_cache[configuration]["pk"],
+                            "session": self._instances_internals[instance].session,
+                            "force_prestige_func": self.force_prestige_func,
+                            "force_stop_func": self.force_stop_func,
+                            "stop_func": self.stop_func,
+                            "pause_func": self.pause_func,
+                            "toast_func": self.toast,
+                            "get_persistence": self.persist.get_persistence,
+
+                        },
+                    )
+                    self._instances_internals[instance].thread.start()
+
+    def stop_session(self, instance):
         """
         "stop_session" functionality.
         """
-        if self._thread is not None:
+        if self._instances_internals[instance].thread is not None:
             self.log_and_toast(
+                instance=instance,
                 title="Session",
                 message="Stopping Session...",
             )
-            self._stop = True
-            self._session = None
-            self._thread.join()
-            self._thread = None
+            self._instances_internals[instance].stop = True
+            self._instances_internals[instance].session = None
+            self._instances_internals[instance].thread.join()
+            self._instances_internals[instance].thread = None
 
-    def pause_session(self):
+    def pause_session(self, instance):
         """
         "pause_session" functionality.
         """
-        if self._thread is not None:
+        if self._instances_internals[instance].thread is not None:
             self.log_and_toast(
+                instance=instance,
                 title="Session",
                 message="Pausing Session...",
             )
-            self._pause = True
+            self._instances_internals[instance].pause = True
 
-    def resume_session(self):
+    def resume_session(self, instance):
         """
         "resume_session" functionality.
         """
-        if self._thread is not None:
+        if self._instances_internals[instance].thread is not None:
             self.log_and_toast(
+                instance=instance,
                 title="Session",
                 message="Resuming Session...",
             )
-            self._pause = False
+            self._instances_internals[instance].pause = False
 
-    def configurations_edit_configurations(self):
+    def instances_edit_instances(self, **kwargs):
+        """
+        "instances_edit_instances" event functionality.
+
+        Note: Instances currently housed on the same page as configurations, same url used for now.
+        """
+        if self.license.license_available:
+            return webbrowser.open_new_tab(
+                url=self.license.program_configurations_template + "/%(program_name)s/%(license)s" % {
+                    "program_name": self.license.program_name,
+                    "license": self.license.license,
+                }
+            )
+
+    def instances_refresh_instances(self, **kwargs):
+        """
+        "configurations_refresh_instances" event functionality.
+        """
+        if self.license.license_available:
+            self.log_and_toast(
+                title="Instances",
+                message="Refreshing Instances...",
+            )
+            self.refresh_instances()
+            self.log_and_toast(
+                title="Instances",
+                message="Done...",
+            )
+
+    def configurations_edit_configurations(self, **kwargs):
         """
         "configurations_edit_configurations" event functionality.
         """
@@ -673,7 +929,7 @@ class GUI(object):
                 }
             )
 
-    def configurations_refresh_configurations(self):
+    def configurations_refresh_configurations(self, **kwargs):
         """
         "configurations_refresh_configurations" event functionality.
         """
@@ -688,19 +944,38 @@ class GUI(object):
                 message="Done...",
             )
 
-    def update_license(self):
+    def update_license(self, require=False, **kwargs):
         """
         "update_license" functionality.
         """
+        popup_kwargs = {
+            "message": "Enter License Key: ",
+            "title": "Update License",
+        }
         text = self.text_input_popup(
-            message="Enter License Key: ",
-            title="Update License",
+            **popup_kwargs
         )
 
         # If the user presses "cancel", text == None.
         # If the user enters nothing, text == "".
-        if text is None or text == "":
-            return
+
+        if require:
+            if text is None:
+                # Forcing a value and user hit exit/cancel,
+                # Exit the application...
+                raise SystemExit
+            if text == "":
+                while text == "":
+                    text = self.text_input_popup(
+                        **popup_kwargs
+                    )
+                    if text is None:
+                        # Re raise system exit on looped exit.
+                        raise SystemExit
+        else:
+            if text is None or text == "":
+                return
+
         # Strip the license key in case any characters
         # are included due to copy/paste, etc.
         text = text.strip()
@@ -726,17 +1001,13 @@ class GUI(object):
             message="Done..."
         )
 
-    def tools_check_for_updates(self):
+    def tools_check_for_updates(self, **kwargs):
         """
         "tools_check_for_updates" functionality.
         """
-        self.log_and_toast(
-            title="Auto Updates",
-            message="Checking For Updates...",
-        )
         self.handle_auto_updates()
 
-    def tools_local_data(self):
+    def tools_local_data(self, **kwargs):
         """
         "tools_local_data" functionality.
         """
@@ -752,7 +1023,7 @@ class GUI(object):
             message="Done...",
         )
 
-    def tools_generate_debug_screenshot(self):
+    def tools_generate_debug_screenshot(self, **kwargs):
         """
         "tools_generate_debug_screenshot" functionality.
         """
@@ -792,7 +1063,7 @@ class GUI(object):
                     }
                 )
 
-    def tools_most_recent_log(self):
+    def tools_most_recent_log(self, **kwargs):
         """
         "tools_most_recent_log" functionality.
         """
@@ -817,7 +1088,7 @@ class GUI(object):
                 message="No Recent Log Available To Open...",
             )
 
-    def tools_flush_license(self):
+    def tools_flush_license(self, **kwargs):
         """
         "tools_flush_license" functionality.
         """
@@ -825,73 +1096,117 @@ class GUI(object):
             title="Flush License",
             message="Flushing License...",
         )
-        self.license.flush()
+        self.license.flush(instance=self._instance_active)
         self.log_and_toast(
             title="Flush License",
             message="Done...",
         )
 
-    def settings_local_enable_toast_notifications(self):
+    def settings_local_enable_toast_notifications(self, **kwargs):
         """
         "settings_local_enable_toast_notifications" functionality.
         """
-        self.persist.set_enable_toast_notifications(value=True)
+        self.persist.set_persistence(
+            key="enable_toast_notifications",
+            value=True,
+        )
         self.log_and_toast(
             title="Toast Notifications",
             message="Enabled Toast Notifications...",
         )
 
-    def settings_local_disable_toast_notifications(self):
+    def settings_local_disable_toast_notifications(self, **kwargs):
         """
         "settings_local_disable_toast_notifications" functionality.
         """
-        self.persist.set_enable_toast_notifications(value=False)
+        self.persist.set_persistence(
+            key="enable_toast_notifications",
+            value=False,
+        )
         self.log_and_toast(
             title="Toast Notifications",
             message="Disabled Toast Notifications...",
         )
 
-    def settings_local_enable_failsafe(self):
+    def settings_local_enable_failsafe(self, **kwargs):
         """
         "settings_local_enable_failsafe" functionality.
         """
-        self.persist.set_enable_failsafe(value=True)
+        self.persist.set_persistence(
+            key="enable_failsafe",
+            value=True,
+        )
         self.log_and_toast(
             title="Failsafe",
             message="Enabled Failsafe...",
         )
 
-    def settings_local_disable_failsafe(self):
+    def settings_local_disable_failsafe(self, **kwargs):
         """
         "settings_local_disable_failsafe" functionality.
         """
-        self.persist.set_enable_failsafe(value=False)
+        self.persist.set_persistence(
+            key="enable_failsafe",
+            value=False,
+        )
         self.log_and_toast(
             title="Failsafe",
             message="Disabled Failsafe..."
         )
 
-    def settings_local_enable_ad_blocking(self):
+    def settings_local_enable_ad_blocking(self, **kwargs):
         """
         "settings_local_enable_ad_blocking" functionality.
         """
-        self.persist.set_enable_ad_blocking(value=True)
+        self.persist.set_persistence(
+            key="enable_ad_blocking",
+            value=True,
+        )
         self.log_and_toast(
             title="Ad Blocking",
             message="Enabled Ad Blocking...",
         )
 
-    def settings_local_disable_ad_blocking(self):
+    def settings_local_disable_ad_blocking(self, **kwargs):
         """
         "settings_local_disable_ad_blocking" functionality.
         """
-        self.persist.set_enable_ad_blocking(value=False)
+        self.persist.set_persistence(
+            key="enable_ad_blocking",
+            value=False,
+        )
         self.log_and_toast(
             title="Ad Blocking",
             message="Disabled Ad Blocking...",
         )
 
-    def discord(self):
+    def settings_local_enable_auto_update(self, **kwargs):
+        """
+        "settings_local_enable_auto_update" functionality.
+        """
+        self.persist.set_persistence(
+            key="enable_auto_update",
+            value=True,
+        )
+        self.log_and_toast(
+            title="Auto Update",
+            message="Enabled Auto Updates...",
+        )
+
+    def settings_local_disable_auto_update(self, **kwargs):
+        """
+        "settings_local_enable_auto_update" functionality.
+        """
+        self.persist.set_persistence(
+            key="enable_auto_update",
+            value=False,
+        )
+        self.log_and_toast(
+            title="Auto Update",
+            message="Disabled Auto Updates...",
+        )
+
+    def discord(self, **kwargs):
         """
         "discord" event functionality.
         """
@@ -907,7 +1222,7 @@ class GUI(object):
             message="Done...",
         )
 
-    def exit(self):
+    def exit(self, **kwargs):
         """
         "exit" event functionality.
         """
@@ -915,7 +1230,8 @@ class GUI(object):
             title="Exit",
             message="Exiting...",
         )
-        self.stop_session()
+        for instance in self._instances_cache.values():
+            self.stop_session(instance=instance["pk"])
         # SystemExit to leave with valid return code.
         # We don't want any exceptions raised.
         raise SystemExit
@@ -939,13 +1255,12 @@ class GUI(object):
         Begin main runtime loop for application.
         """
         try:
-            # Always handling a configuration refresh on initial
-            # application startup.
-            self.refresh_configurations()
             # Handle auto console sizing...
             self.handle_console_size()
-            # Handle auto update checks...
-            self.handle_auto_updates()
+            # Handle auto update checks
+            # (only if enabled locally)...
+            if self.persist.get_persistence("enable_auto_update"):
+                self.handle_auto_updates()
 
             self.logger.info("===================================================================================")
             self.logger.info(
@@ -974,15 +1289,17 @@ class GUI(object):
                 event_func = self.event_map.get(event_text)
 
                 if not event_func:
-                    # Also check to see if a configuration is being set
-                    # as active, this is handled dynamically based on the
-                    # cached configurations.
+                    # Dynamic menu entry checks...
+                    if event_text in self._instances_cache:
+                        self.handle_instance_activate(
+                            instance=event_text,
+                        )
                     if event_text in self._configurations_cache:
                         self.handle_configuration_activate(
                             configuration=event_text,
                         )
                 else:
-                    event_func()
+                    event_func(instance=self._instance_active)
         except Exception:
             self.logger.info(
                 "An unknown exception was encountered... The error has been reported to the support team."
@@ -995,4 +1312,5 @@ class GUI(object):
             # Always set our "remembered" console size on exit.
             self.remember_console_size()
             # Always stop session on application termination...
-            self.stop_session()
+            for instance in self._instances_cache.values():
+                self.stop_session(instance=instance["pk"])

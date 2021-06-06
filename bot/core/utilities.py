@@ -60,6 +60,26 @@ class LogStream(object):
         return record.split(":")[2]
 
 
+class StreamHandler(logging.StreamHandler):
+    """Custom StreamHandler to ensure we can handle only emitting logs when
+    the active instance is being logged.
+    """
+    def __init__(self, instance_id, instance_func, stream=None):
+        """Initialize a custom stream handler, the active instance and a function to retrieve
+        the currently active instance should be available, these are used to determine whether
+        or not a log is emitted to the stream.
+        """
+        self.instance_id = instance_id
+        self.instance_func = instance_func
+        # Handle super init following instance
+        # information setup.
+        super().__init__(stream=stream)
+
+    def emit(self, record):
+        if self.instance_func() == self.instance_id:
+            super().emit(record=record)
+
+
 # Instance of our stream available through runtime.
 # We only ever want one...
 _STREAM = LogStream()
@@ -74,14 +94,16 @@ logging.basicConfig(
 
 def create_logger(
     log_directory,
-    log_name,
+    instance_id,
+    instance_name,
+    instance_func,
     session_id,
 ):
     """
     Generate a new logger instance with the proper handlers associated.
     """
-    log_name = "%(log_name)s-%(uuid)s" % {
-        "log_name": log_name,
+    log_name = "%(instance_name)s-%(uuid)s" % {
+        "instance_name": instance_name.replace(" ", "-").lower(),
         "uuid": session_id,
     }
     log_formatter = logging.Formatter(
@@ -104,7 +126,10 @@ def create_logger(
 
     # Stream handler should default to our information level
     # of logging to ensure only relevant information is available.
-    handler_stream = logging.StreamHandler()
+    handler_stream = StreamHandler(
+        instance_id=instance_id,
+        instance_func=instance_func,
+    )
     handler_stream.setLevel(level=logging.INFO)
     handler_stream.setFormatter(fmt=log_formatter)
 

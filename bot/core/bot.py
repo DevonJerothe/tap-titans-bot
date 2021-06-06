@@ -50,13 +50,17 @@ class Bot(object):
         application_discord,
         session,
         license_obj,
+        instance,
+        instance_name,
+        instance_func,
+        window,
+        configuration_pk,
         force_prestige_func,
         force_stop_func,
         stop_func,
         pause_func,
         toast_func,
-        failsafe_enabled_func,
-        ad_blocking_enabled_func,
+        get_persistence,
     ):
         """
         Initialize a new Bot instance.
@@ -68,9 +72,10 @@ class Bot(object):
         self.application_version = application_version
         self.application_discord = application_discord
 
-        self.files = {}             # Program Files.
-        self.configurations = {}    # Global Program Configurations
-        self.configuration = {}     # Local Bot Configurations.
+        self.files = {}                 # Program Files.
+        self.configurations = {}        # Global Program Configurations
+        self.configuration_name = None  # Local Bot Configuration Name.
+        self.configuration = {}         # Local Bot Configurations.
 
         self.export_orig_contents = {}     # Store the original set of export data.
         self.export_current_contents = {}  # Most recent contents.
@@ -96,14 +101,25 @@ class Bot(object):
 
         # Additionally, certain configurations are persisted
         # locally and can be enabled/disabled through the gui.
-        self.failsafe_enabled_func = failsafe_enabled_func
-        self.ad_blocking_enabled_func = ad_blocking_enabled_func
+        self.get_persistence = get_persistence
+
+        # This instance can be passed back to the gui whenever a
+        # bot session needs to interact with a running bot.
+        self.instance = instance
+        self.instance_name = instance_name
+        self.instance_func = instance_func
+
+        # Selected window and configuration, notable here that we expect a window hwnd,
+        # and a configuration primary key for the bot to correctly process data and start.
+        self.window = window
+        self.configuration_pk = configuration_pk
 
         # Custom scheduler is used currently to handle
         # stop_func functionality when running pending
         # jobs, this avoids large delays when waiting
         # to pause/stop
         self.schedule = TitanScheduler(
+            instance=self.instance,
             stop_func=self.stop_func,
             pause_func=self.pause_func,
             force_stop_func=self.force_stop_func,
@@ -121,7 +137,13 @@ class Bot(object):
 
         self.session = session
         self.license = license_obj
+        self.license.instance = self.instance
         self.license.session = self.session
+
+        # Initialize this as zero, this is updated and reset
+        # as needed as we attempt to validate our license through
+        # periodic checks.
+        self.license_failures = 0
 
         # Update sentry tags in case of unhandled exceptions
         # occurring while user runs session.
@@ -130,7 +152,9 @@ class Bot(object):
 
         self.logger, self.stream = create_logger(
             log_directory=self.license.program_logs_directory,
-            log_name=self.license.program_name,
+            instance_id=self.instance,
+            instance_name=self.instance_name,
+            instance_func=self.instance_func,
             session_id=self.session,
         )
 
@@ -151,7 +175,10 @@ class Bot(object):
                     self.license.license
                 )
                 self.license.flush()
-                self.license.collect_license(logger=self.logger)
+                self.license.collect_license(
+                    logger=self.logger,
+                    configuration_pk=self.configuration_pk,
+                )
                 self.license.online()
                 self.logger.info(
                     "Your license has been requested and validated successfully!"
@@ -226,10 +253,11 @@ class Bot(object):
         try:
             self.handle = WindowHandler()
             self.window = self.handle.filter_first(
-                filter_title=self.configuration["emulator_window"],
+                filter_title=self.window,
             )
             self.window.configure(
-                enable_failsafe_func=self.failsafe_enabled_func,
+                instance=self.instance,
+                get_persistence=self.get_persistence,
                 force_stop_func=self.force_stop_func,
             )
         except WindowNotFoundError:
@@ -258,6 +286,7 @@ class Bot(object):
         self.logger.info("Configuring local configuration...")
         # The settings housed here are configurable by the user locally.
         # The file should just be loaded and placed into our configuration.
+        self.configuration_name = self.license.license_data["configuration"]["configuration_name"]
         self.configuration = self.license.license_data["configuration"]
         self.logger.debug(
             "Local Configuration: Loaded..."
@@ -340,6 +369,19 @@ class Bot(object):
         self.configuration["perks_enabled_perks"] = json.loads(self.configuration["perks_enabled_perks"])
         self.configuration["perks_enabled_perks_tournament"] = json.loads(self.configuration["perks_enabled_perks_tournament"])
 
+        # Activate Skills Data.
+        # ------------------
+        self.configuration["activate_skills"] = json.loads(self.configuration["activate_skills"])
+        # Configure some skills interval information so we can store
+        # when each skill should be activated. These may not all be used depending
+        # on if they're enabled in the users configuration.
+        self.skills_heavenly_strike_next_run = None
+        self.skills_deadly_strike_next_run = None
+        self.skills_hand_of_midas_next_run = None
+        self.skills_fire_sword_next_run = None
+        self.skills_war_cry_next_run = None
+        self.skills_shadow_clone_next_run = None
+
         if self.configuration["artifacts_enabled"] and self.configuration["artifacts_upgrade_enabled"]:
             # Shuffled artifact settings will shuffle everything in the map,
             # this is done regardless of maps being enabled or not.
@@ -362,6 +404,7 @@ class Bot(object):
         # ------------------
         # "powerful_hero" - most powerful hero currently in game.
         self.powerful_hero = None
+        self.daily_limit_reached = False
 
         # Per Prestige Data.
         # ------------------
@@ -392,6 +435,32 @@ class Bot(object):
         self.logger.debug("\"close_to_max_ready\": %s" % self.close_to_max_ready)
         self.logger.debug("\"master_levelled\": %s" % self.master_levelled)
         self.logger.debug("\"shop_pets_purchase_pets\": %s" % self.shop_pets_purchase_pets)
+
+    def configure_skill(self, skill, total_seconds):
+        """Utility function to handle a specific skill and setup it's next run date.
+        """
+        setattr(
+            self,
+            "skills_%(skill)s_next_run" % {"skill": skill},
+            datetime.datetime.now() + datetime.timedelta(seconds=total_seconds)
+        )
+
+    def configure_skills(self):
+        """Utility function to handle initial skill activation values.
+
+        Skills are enabled/disabled through a configuration that lets the user enable certain skills, the number
+        of clicks per skill, and the interval between each execution.
+
+        This also handles resetting skill intervals if it's called after the first
+        execution.
+        """
+        if self.configuration["activate_skills_enabled"]:
+            for skill in self.configuration["activate_skills"]["ordered"]:
+                if skill["enabled"]:
+                    self.configure_skill(
+                        skill=skill["skill"],
+                        total_seconds=skill["total_seconds"],
+                    )
 
     def schedule_functions(self):
         """
@@ -462,7 +531,7 @@ class Bot(object):
             },
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
-                "interval": self.configuration["activate_skills_interval"],
+                "interval": self.configurations["global"]["activate_skills"]["activate_skills_interval"],
                 "reset": True,
             },
             self.level_heroes_quick: {
@@ -597,6 +666,11 @@ class Bot(object):
             self.activate_skills: {
                 "enabled": self.configuration["activate_skills_enabled"],
                 "execute": self.configuration["activate_skills_on_start"],
+                # Ensure skill activation (if enabled on start)
+                # properly forces all enabled skills to run.
+                "kwargs": {
+                    "force": True,
+                },
             },
             self.inbox: {
                 "enabled": self.configurations["global"]["inbox"]["inbox_enabled"],
@@ -656,7 +730,7 @@ class Bot(object):
                 # executed... Since a manual pause or stop while these
                 # are running should be respected by the bot.
                 self.run_checks()
-                function()
+                function(**data.get("kwargs", {}))
 
     def handle_timeout(
         self,
@@ -853,6 +927,31 @@ class Bot(object):
         if duplicates:
             self._check_game_state_reboot()
 
+    def _check_game_state_misc(self):
+        """Handle the miscellaneous game state check,
+        """
+        # Handle the skill prompt in game causing the bot
+        # to be stuck...
+        if self.search(
+            image=self.files["warning_header"],
+            precision=self.configurations["parameters"]["check_game_state"]["misc_warning_header_precision"],
+        )[0]:
+            self.click(
+                point=self.configurations["points"]["check_game_state"]["misc_warning_header_yes"],
+                pause=self.configurations["parameters"]["check_game_state"]["misc_warning_header_yes_pause"],
+            )
+
+        # Handle the server maintenance prompt showing up which should
+        # just shut the bot down.
+        if self.search(
+            image=self.files["server_maintenance_header"],
+            precision=self.configurations["parameters"]["check_game_state"]["misc_server_maintenance_precision"],
+        )[0]:
+            self.logger.info(
+                "It looks like server maintenance is currently active, exiting..."
+            )
+            raise GameStateException()
+
     def check_game_state(self):
         """
         Perform a check on the emulator to determine whether or not the game state is no longer
@@ -867,15 +966,18 @@ class Bot(object):
         # Different odd use cases occur within the game that we check for here
         # and solve through this method.
 
-        # 1. A fairy ad is stuck on the screen...
+        # 1. Checking for some of the miscellaneous game state checks, this currently includes
+        #    things like the skill tree stuck open.
+        self._check_game_state_misc()
+        # 2. A fairy ad is stuck on the screen...
         #    This one is odd, but can be solved by clicking on the middle
         #    of the screen and then trying to collect the ad.
         self._check_game_state_fairies()
-        # 2. The game has frozen completely, we track this by taking a screenshot of the entire
+        # 3. The game has frozen completely, we track this by taking a screenshot of the entire
         #    screen when we're in here and comparing it to the last one taken each time, if the
         #    images are the same, we should reboot the game.
         self._check_game_state_frozen()
-        # 3. The generic game state check, we try to travel to the main game screen
+        # 4. The generic game state check, we try to travel to the main game screen
         #    and then we look for some key images that would mean we are still in the game.
         self._check_game_state_generic()
 
@@ -891,24 +993,33 @@ class Bot(object):
         - License is already online and being retrieved with a different session.
         - Program has had changes made that break the current bot.
         """
+        allowed_failures = self.configurations["global"]["check_license"]["allowed_failures"]
+
         try:
             self.logger.debug(
                 "Checking license status..."
             )
-            self.license.collect_license_data()
+            self.license.collect_license_data(
+                configuration_pk=self.configuration_pk,
+            )
+            self.license_failures = 0
         except TimeoutError:
-            self.logger.info(
-                "Authentication timeout was reached... Check your internet connection and please try again."
-            )
-            raise LicenseAuthenticationError()
+            self.license_failures += 1
+            if self.license_failures >= allowed_failures:
+                self.logger.info(
+                    "Authentication timeout was reached... Check your internet connection and please try again."
+                )
+                raise LicenseAuthenticationError()
         except LicenseExpirationError as err:
-            self.logger.info(
-                "Your license has expired (%(license_expiration)s), please contact support or extend your license "
-                "and try again." % {
-                    "license_expiration": err,
-                }
-            )
-            raise LicenseAuthenticationError()
+            self.license_failures += 1
+            if self.license_failures >= allowed_failures:
+                self.logger.info(
+                    "Your license has expired (%(license_expiration)s), please contact support or extend your license "
+                    "and try again." % {
+                        "license_expiration": err,
+                    }
+                )
+                raise LicenseAuthenticationError()
         except LicenseIntegrityError:
             self.logger.info(
                 "A license integrity error was encountered, you can flush your license "
@@ -917,12 +1028,17 @@ class Bot(object):
                 "terminated unexpectedly."
             )
             raise LicenseAuthenticationError()
-        except Exception:
-            self.logger.info(
-                "License or backend configuration has changed and is no longer valid, "
-                "a new version or release may be available, if not, please contact support."
-            )
-            raise LicenseAuthenticationError()
+        except Exception as exc:
+            self.license_failures += 1
+            if self.license_failures >= allowed_failures:
+                self.logger.debug(
+                    exc,
+                )
+                self.logger.info(
+                    "License or backend configuration has changed and is no longer valid, "
+                    "a new version or release may be available, if not, please contact support."
+                )
+                raise LicenseAuthenticationError()
 
     def snapshot(
         self,
@@ -1579,7 +1695,7 @@ class Bot(object):
                 # No ad can be collected without watching an ad.
                 # We can loop and wait for a disabled ad to be blocked.
                 # (This is done through ad blocking, unrelated to our code here).
-                if self.ad_blocking_enabled_func():
+                if self.get_persistence("enable_ad_blocking"):
                     self.logger.info(
                         "Attempting to collect ad rewards through ad blocking..."
                     )
@@ -1873,30 +1989,55 @@ class Bot(object):
                             }
                         )
 
-    def activate_skills(self):
+    def activate_skills(self, force=False):
+        """Activate the enabled skills in game.
+
+        The ``force`` parameter can be overridden to ensure that any enabled skills
+        are executed regardless of their interval.
         """
-        Activate the enabled skills in game.
-        """
-        self.travel_to_main_screen()
-        self.logger.info(
-            "Activating skills in game..."
-        )
-        for enabled in [
-            skill for skill, enabled in [
-                (s, self.configuration["%(skill)s_activate" % {
-                    "skill": s,
-                }]) for s in self.configurations["global"]["skills"]["skills"]
-            ] if enabled
-        ]:
+        # We'll only travel if we have a skill ready to be activated...
+        # Determine that here.
+        ready = []
+        now = datetime.datetime.now()
+
+        for skill, interval in (
+            ("heavenly_strike", self.skills_heavenly_strike_next_run),
+            ("deadly_strike", self.skills_deadly_strike_next_run),
+            ("hand_of_midas", self.skills_hand_of_midas_next_run),
+            ("fire_sword", self.skills_fire_sword_next_run),
+            ("war_cry", self.skills_war_cry_next_run),
+            ("shadow_clone", self.skills_shadow_clone_next_run),
+        ):
+            if interval and (interval <= now or force):
+                ready.append(
+                    skill,
+                )
+
+        if ready:
+            self.travel_to_main_screen()
             self.logger.info(
-                "Activating %(skill)s now..." % {
-                    "skill": enabled,
-                }
+                "Activating skills in game now..."
             )
-            self.click(
-                point=self.configurations["points"]["activate_skills"]["skill_points"][enabled],
-                pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
-            )
+            # Ensure we loop through the ordered skills to retain the proper
+            # activation order for each ready skill.
+            for skill in self.configuration["activate_skills"]["ordered"]:
+                if skill["skill"] in ready:
+                    self.logger.info(
+                        "Activating %(skill)s %(clicks)s time(s) now..." % {
+                            "skill": skill["skill"],
+                            "clicks": skill["clicks"],
+                        }
+                    )
+                    self.click(
+                        point=self.configurations["points"]["activate_skills"]["skill_points"][skill["skill"]],
+                        clicks=int(skill["clicks"]),
+                        interval=self.configurations["parameters"]["activate_skills"]["activate_interval"],
+                        pause=self.configurations["parameters"]["activate_skills"]["activate_pause"],
+                    )
+                    self.configure_skill(
+                        skill=skill["skill"],
+                        total_seconds=skill["total_seconds"],
+                    )
 
     def _level_heroes_ensure_max(self):
         """
@@ -2404,7 +2545,7 @@ class Bot(object):
                     precision=self.configurations["parameters"]["shop_video_chest"]["watch_video_icon_precision"],
                 )
                 if watch_found:
-                    if self.ad_blocking_enabled_func():
+                    if self.get_persistence("enable_ad_blocking"):
                         # Watch is available, we'll only do this if ad blocking is enabled.
                         self.logger.info(
                             "Video chest watch is available, collecting now..."
@@ -2665,7 +2806,7 @@ class Bot(object):
                                         continue
                                     # Maybe we can use ad blocking.
                                     else:
-                                        if self.ad_blocking_enabled_func():
+                                        if self.get_persistence("enable_ad_blocking"):
                                             # Follow normal flow and try to watch the ad
                                             # "Okay" button will begin the process.
                                             while self.search(
@@ -3195,6 +3336,34 @@ class Bot(object):
                 "upgradeArtifact": None,
             })
 
+    def _prestige_handle_daily_limit(self):
+        """Handle the check for prestige daily limit's being reached. This becomes an issue when the
+        "prestige close to max" functionality is enabled but the daily limit is reached by a user, in which case,
+        they would end up never hitting that threshold.
+
+        We set an internal value when this is checked so that prestige checks can use it proper.
+
+        Expecting the in-game screen here to currently be on the prestige prompt.
+        """
+        self.logger.debug(
+            "Checking prestige daily limit now..."
+        )
+
+        if self.search(
+            image=self.files["prestige_daily_limit_reached"],
+            region=self.configurations["regions"]["prestige"]["prestige_daily_limit_area"],
+            precision=self.configurations["parameters"]["prestige"]["prestige_daily_limit_precision"],
+        )[0]:
+            self.logger.debug(
+                "Daily prestige limit reached, disabling event icon checks..."
+            )
+            self.daily_limit_reached = True
+        else:
+            self.logger.debug(
+                "Daily prestige limit has not been reached, enabling event icon checks..."
+            )
+            self.daily_limit_reached = False
+
     def prestige(self):
         """
         Perform a prestige in game, upgrading a specified artifact afterwards if enabled.
@@ -3313,6 +3482,10 @@ class Bot(object):
                         "precision": self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
                     },
                 )
+                # Check for the daily limit here in case it's been reached...
+                # In which case we'll update our internal value to handle this.
+                self._prestige_handle_daily_limit()
+                # Continue prestige post this check...
                 self.find_and_click_image(
                     image=self.files["prestige_confirm_icon"],
                     region=self.configurations["regions"]["prestige"]["prestige_confirm_icon_area"],
@@ -3433,9 +3606,13 @@ class Bot(object):
         )
 
         if not self.close_to_max_ready:
-            if self.configurations["global"]["events"]["event_running"] and not self.configuration["abyssal"]:
+            if (
+                self.configurations["global"]["events"]["event_running"]
+                and not self.configuration["abyssal"]
+                and not self.daily_limit_reached
+            ):
                 self.logger.info(
-                    "Event is currently running, checking for event icon present on master panel..."
+                    "Checking for event icon present on master panel..."
                 )
                 # Event is running, let's check the master panel for
                 # the current event icon.
@@ -3448,14 +3625,9 @@ class Bot(object):
             else:
                 # No event is running, instead, we will open the skill tree,
                 # and check that the reset icon is present.
-                if self.configuration["abyssal"]:
-                    self.logger.info(
-                        "Abyssal tournament is enabled, checking for prestige reset on skill tree..."
-                    )
-                else:
-                    self.logger.info(
-                        "No event is currently running, checking for prestige reset on skill tree..."
-                    )
+                self.logger.info(
+                    "Checking for prestige reset on skill tree..."
+                )
                 self.click(
                     point=self.configurations["points"]["prestige_close_to_max"]["skill_tree_icon"],
                     pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_click_pause"]
@@ -3506,6 +3678,39 @@ class Bot(object):
                     "Prestige is ready..."
                 )
                 self.prestige_execute_or_schedule()
+
+    def prestige_check_daily_limit(self):
+        """Handle the prestige daily limit checks and ensure the bot is in the right location.
+        """
+        self.logger.info(
+            "Checking if daily prestige limit has been reached..."
+        )
+
+        self.travel_to_master()
+
+        self.find_and_click_image(
+            image=self.files["prestige_icon"],
+            region=self.configurations["regions"]["prestige"]["prestige_icon_area"],
+            precision=self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+            pause=self.configurations["parameters"]["prestige"]["prestige_icon_pause"],
+            timeout=self.configurations["parameters"]["prestige"]["prestige_icon_timeout"],
+            timeout_search_while_not=False,
+            timeout_search_kwargs={
+                "image": self.files["prestige_icon"],
+                "region": self.configurations["regions"]["prestige"]["prestige_icon_area"],
+                "precision": self.configurations["parameters"]["prestige"]["prestige_icon_precision"],
+            },
+        )
+        # Check for the daily limit here in case it's been reached...
+        # In which case we'll update our internal value to handle this.
+        self._prestige_handle_daily_limit()
+        # Ensure the prompt is closed following this check...
+        self.find_and_click_image(
+            image=self.files["large_exit"],
+            region=self.configurations["regions"]["prestige_close_to_max"]["skill_tree_exit_area"],
+            precision=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_precision"],
+            pause=self.configurations["parameters"]["prestige_close_to_max"]["skill_tree_exit_pause"],
+        )
 
     def tap(self):
         """
@@ -3585,8 +3790,13 @@ class Bot(object):
             if index % self.configurations["parameters"]["tap"]["tap_collapse_prompts_modulo"] == 0:
                 # Also handle the fact the tapping in general is sporadic
                 # and the incorrect panel/window could be open.
-                self.collapse_prompts()
-                self.collapse()
+                try:
+                    self.collapse()
+                    self.collapse_event_panel()
+                except TimeoutError:
+                    # This might be a one off issue, in which case, just continue even though
+                    # we aren't able to collapse.
+                    continue
             self.click(
                 point=point,
                 button=self.configurations["parameters"]["tap"]["button"],
@@ -4185,10 +4395,11 @@ class Bot(object):
             original_contents=original_contents,
             extra={
                 "version": self.application_version,
-                "configuration": self.configuration["configuration_name"],
+                "instance": self.instance_name,
+                "configuration": self.configuration_name,
                 "abyssal": self.configuration["abyssal"],
                 "window": self.window.__str__(),
-            }
+            },
         )
 
     def export_prestige(self, prestige_contents):
@@ -4213,8 +4424,8 @@ class Bot(object):
         Helper method to run checks against current bot state, this is in its own method so it can be ran in the main loop,
         as well as in our startup execution functions...
         """
-        while self.pause_func():
-            if self.stop_func() or self.force_stop_func():
+        while self.pause_func(instance=self.instance):
+            if self.stop_func(instance=self.instance) or self.force_stop_func(instance=self.instance):
                 raise StoppedException
             if not self.pause_date:
                 self.pause_date = datetime.datetime.now()
@@ -4222,6 +4433,7 @@ class Bot(object):
                     title="Session",
                     message="Session Paused Successfully...",
                     duration=5,
+                    instance=self.instance,
                 )
             # Currently paused through the GUI.
             # Just wait and sleep slightly in between checks.
@@ -4237,16 +4449,16 @@ class Bot(object):
             self.schedule.pad_jobs(timedelta=datetime.datetime.now() - self.pause_date)
             self.pause_date = None
         # Check for explicit prestige force...
-        if self.force_prestige_func():
-            self.force_prestige_func(_set=True)
+        if self.force_prestige_func(instance=self.instance):
+            self.force_prestige_func(instance=self.instance, _set=True,)
             self.prestige()
-        if self.force_stop_func():
-            self.force_stop_func(_set=True)
+        if self.force_stop_func(instance=self.instance):
+            self.force_stop_func(instance=self.instance, _set=True)
             # Just raise a stopped exception if we
             # are just exiting and it's found in between
             # function execution.
             raise StoppedException
-        if self.stop_func():
+        if self.stop_func(instance=self.instance):
             raise StoppedException
 
     def run(self):
@@ -4267,21 +4479,30 @@ class Bot(object):
         self.logger.info("Window: %(window)s" % {
             "window": self.window,
         })
+        self.logger.info("Instance: %(instance)s" % {
+            "instance": self.instance_name,
+        })
         self.logger.info("Session: %(session)s" % {
             "session": self.session,
         })
         self.logger.info("License: %(license)s - %(expiration)s" % {
-            "license": self.license.license,
+            "license": "%(license_slice)s**********" % {
+                "license_slice": self.license.license[:10],
+            },
             "expiration": self.license.expiration,
         })
         self.logger.info("===================================================================================")
         self.toast_func(
             title="Session",
-            message="Session Initialized Successfully..."
+            message="Session Initialized Successfully...",
+            instance=self.instance,
         )
 
         try:
             self.configure_additional()
+            self.configure_skills()
+            # Ensure we check the prestige daily limit on startup.
+            self.prestige_check_daily_limit()
             # Ensure that a session is still available even if data
             # exports are disabled.
             if not self.configuration["export_data_enabled"]:
@@ -4295,7 +4516,7 @@ class Bot(object):
 
             # Main catch all for our manual stops, fail-safes are caught within
             # actual api calls instead of here...
-            while not self.stop_func() and not self.force_stop_func():
+            while not self.stop_func(instance=self.instance) and not self.force_stop_func(instance=self.instance):
                 try:
                     self.run_checks()
                     self.schedule.run_pending()
@@ -4308,6 +4529,7 @@ class Bot(object):
                 title="Session",
                 message="Session Stopped Successfully...",
                 duration=5,
+                instance=self.instance,
             )
         # Catch any explicit exceptions, these are useful so that we can
         # log custom error messages or deal with certain cases before running
@@ -4319,7 +4541,8 @@ class Bot(object):
             self.toast_func(
                 title="Game State Exception",
                 message="Game State Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except FailSafeException:
             self.logger.info(
@@ -4330,7 +4553,8 @@ class Bot(object):
             self.toast_func(
                 title="Failsafe Exception",
                 message="Failsafe Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except ExportContentsException:
             self.logger.info(
@@ -4339,7 +4563,8 @@ class Bot(object):
             self.toast_func(
                 title="Export Contents Exception",
                 message="Export Contents Exception Encountered, Ending Session Now...",
-                duration=5
+                duration=5,
+                instance=self.instance,
             )
         except KeyError as err:
             self.logger.info(
@@ -4352,6 +4577,7 @@ class Bot(object):
                 title="Missing Key",
                 message="KeyError Encountered, Ending Session Now...",
                 duration=7,
+                instance=self.instance,
             )
         except LicenseAuthenticationError:
             self.logger.info(
@@ -4360,7 +4586,8 @@ class Bot(object):
             self.toast_func(
                 title="License Authentication Error",
                 message="Authentication Error Encountered. Ending Session Now...",
-                duration=7
+                duration=7,
+                instance=self.instance,
             )
         except StoppedException:
             # Pass when stopped exception is encountered, skip right to our
@@ -4369,6 +4596,7 @@ class Bot(object):
                 title="Session",
                 message="Session Stopped Successfully...",
                 duration=5,
+                instance=self.instance,
             )
         except Exception as exc:
             self.logger.info(

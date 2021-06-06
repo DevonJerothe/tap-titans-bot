@@ -12,7 +12,7 @@ VALIDATION_EXECUTABLE_NAME = "ttb.exe"
 # and used to store our needed local data.
 VALIDATION_NAME = "tap-titans-bot"
 # Validation Config Identifier Secret.
-VALIDATION_IDENTIFIER_SECRET = "s$XmP|9MmP|bl"
+VALIDATION_IDENTIFIER_SECRET = "$K%zmM{ocYoHYc%%Mz"
 
 # Base Validation URL.
 # This should be the main url with a trailing slash included.
@@ -64,6 +64,10 @@ VALIDATION_CONFIGURATIONS_URL = "%(validation_licenses_url)s/%(configurations_en
 VALIDATION_CONFIGURATION_ACTIVATE_URL = "%(validation_licenses_url)s/%(configuration_activate_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
     "configuration_activate_endpoint": "license/configuration/activate",
+}
+VALIDATION_INSTANCES_URL = "%(validation_licenses_url)s/%(instances_endpoint)s" % {
+    "validation_licenses_url": VALIDATION_LICENSES_URL,
+    "instances_endpoint": "license/instances",
 }
 VALIDATION_LICENSE_RETRIEVE_URL = "%(validation_licenses_url)s/%(license_retrieve_endpoint)s" % {
     "validation_licenses_url": VALIDATION_LICENSES_URL,
