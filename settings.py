@@ -17,6 +17,11 @@ BOT_DATA_SCHEMA_DIRECTORY = os.path.join(BOT_DATA_DIRECTORY, "schema")
 # The configuration file contains all global configurations.
 BOT_DATA_SCHEMA_CONFIGURATION_FILE = os.path.join(BOT_DATA_SCHEMA_DIRECTORY, "schema.json")
 
+# The migration directory is explicitly defined so it can  be accessed when running
+# the application, otherwise the current dir is used which will break with our
+# built application.
+MIGRATIONS_DIRECTORY = os.path.join(PROJECT_DIRECTORY, "migrations")
+
 # The database directory houses all models and database utilities.
 DATABASE_DIRECTORY = os.path.join(PROJECT_DIRECTORY, "database")
 # The models directory houses all database models and their associated
