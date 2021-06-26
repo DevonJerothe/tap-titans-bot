@@ -55,7 +55,7 @@ class Window(object):
         """
         Initialize a new window object with the specified hwnd value.
         """
-        self.get_persistence = None
+        self.get_settings_obj = None
         self.force_stop_func = None
         # Hard code/set these to handle some additional work
         # done while taking screenshots and calculating points...
@@ -68,16 +68,15 @@ class Window(object):
     def configure(
         self,
         instance,
-        get_persistence,
+        get_settings_obj,
         force_stop_func,
     ):
         """
         Configure the given window, ensuring the expected settings are included.
         """
         self.instance = instance
-        self.get_persistence = get_persistence
+        self.get_settings_obj = get_settings_obj
         self.force_stop_func = force_stop_func
-        self.form = Window(win32gui.FindWindowEx(None, win32gui.FindWindowEx(None, None, self.FORM_CLASS, None), self.FORM_CLASS, None))
 
     def __str__(self):
         return "%(text)s (X: %(x)s, Y: %(y)s, W: %(w)s, H: %(h)s)" % {
@@ -158,7 +157,7 @@ class Window(object):
         """
         Perform the proper failsafe check here (if enabled).
         """
-        if self.get_persistence("enable_failsafe"):
+        if self.get_settings_obj().failsafe:
             pyautogui.failSafeCheck()
 
     def _force_stop(self):
@@ -416,6 +415,8 @@ class WindowHandler(object):
                 }
         if _dct:
             return _dct.values()
+        else:
+            return {}
 
     def filter_first(self, filter_title):
         """
