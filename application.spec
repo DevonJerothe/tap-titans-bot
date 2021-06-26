@@ -7,7 +7,7 @@ environment = "<ENV_DIR>"
 
 a = Analysis(
     ['application.py'],
-    pathex=[repository + 'tap-titans-bot'],
+    pathex=[repository],
     binaries=[],
     datas=[
         (repository + '\\media\\flame.ico', 'media'),
