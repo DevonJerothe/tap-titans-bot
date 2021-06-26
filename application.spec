@@ -11,6 +11,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (repository + '\\media\\flame.ico', 'media'),
+        (repository + '\\migrations', 'migrations'),
         (environment + '\\Lib\\site-packages\\peewee_migrate\\template.txt', 'peewee_migrate'),
     ],
     hookspath=[],
