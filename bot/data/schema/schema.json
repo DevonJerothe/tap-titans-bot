@@ -1,0 +1,1927 @@
+{
+  "colors": {
+    "tournaments": {
+      "tournaments_over_range": [
+        [
+          205,
+          220
+        ],
+        [
+          45,
+          60
+        ],
+        [
+          35,
+          55
+        ]
+      ],
+      "tournaments_soon_range": [
+        [
+          97,
+          106
+        ],
+        [
+          97,
+          106
+        ],
+        [
+          97,
+          106
+        ]
+      ],
+      "tournaments_ready_range": [
+        [
+          25,
+          40
+        ],
+        [
+          110,
+          125
+        ],
+        [
+          130,
+          155
+        ]
+      ],
+      "tournaments_in_progress_range": [
+        [
+          112,
+          123
+        ],
+        [
+          182,
+          195
+        ],
+        [
+          67,
+          73
+        ]
+      ]
+    },
+    "level_heroes": {
+      "level_heroes_click_range": [
+        [
+          20,
+          180
+        ],
+        [
+          20,
+          180
+        ],
+        [
+          20,
+          180
+        ]
+      ],
+      "level_heroes_autobuy_disabled_range": [
+        [
+          150,
+          170
+        ],
+        [
+          150,
+          170
+        ],
+        [
+          150,
+          170
+        ]
+      ],
+      "level_heroes_autobuy_enabled_red_range": [
+        [
+          215,
+          245
+        ],
+        [
+          80,
+          120
+        ],
+        [
+          40,
+          80
+        ]
+      ],
+      "level_heroes_autobuy_enabled_blue_range": [
+        [
+          45,
+          75
+        ],
+        [
+          160,
+          200
+        ],
+        [
+          225,
+          255
+        ]
+      ]
+    },
+    "level_skills": {
+      "max_level_range": [
+        [
+          196,
+          205
+        ],
+        [
+          38,
+          47
+        ],
+        [
+          38,
+          47
+        ]
+      ]
+    },
+    "headgear_swap": {
+      "headgear_panel_range": [
+        [
+          50,
+          70
+        ],
+        [
+          50,
+          70
+        ],
+        [
+          55,
+          75
+        ]
+      ],
+      "skill_upgrade_wait_range": [
+        [
+          0,
+          10
+        ],
+        [
+          0,
+          10
+        ],
+        [
+          0,
+          10
+        ]
+      ]
+    },
+    "shop_video_chest": {
+      "collect_disabled_range": [
+        [
+          80,
+          100
+        ],
+        [
+          80,
+          100
+        ],
+        [
+          95,
+          115
+        ]
+      ]
+    }
+  },
+  "global": {
+    "pause": {
+      "pause_check_interval": 2
+    },
+    "events": {
+      "event_running": true
+    },
+    "search": {
+      "search_list_interval": 0.01
+    },
+    "skills": {
+      "skills": [
+        "heavenly_strike",
+        "deadly_strike",
+        "hand_of_midas",
+        "fire_sword",
+        "war_cry",
+        "shadow_clone"
+      ]
+    }
+  },
+  "points": {
+    "tap": {
+      "tap_map": {
+        "pet": [
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ],
+          [
+            283,
+            377
+          ]
+        ],
+        "heroes": [
+          [
+            419,
+            81
+          ],
+          [
+            117,
+            149
+          ],
+          [
+            386,
+            126
+          ],
+          [
+            62,
+            176
+          ],
+          [
+            370,
+            177
+          ],
+          [
+            109,
+            192
+          ],
+          [
+            418,
+            167
+          ],
+          [
+            14,
+            221
+          ],
+          [
+            445,
+            165
+          ],
+          [
+            50,
+            224
+          ],
+          [
+            465,
+            154
+          ],
+          [
+            78,
+            221
+          ],
+          [
+            397,
+            218
+          ],
+          [
+            8,
+            293
+          ],
+          [
+            444,
+            215
+          ],
+          [
+            56,
+            281
+          ],
+          [
+            423,
+            221
+          ],
+          [
+            36,
+            308
+          ],
+          [
+            467,
+            217
+          ],
+          [
+            100,
+            317
+          ],
+          [
+            426,
+            310
+          ],
+          [
+            73,
+            302
+          ],
+          [
+            455,
+            293
+          ],
+          [
+            50,
+            401
+          ],
+          [
+            377,
+            312
+          ],
+          [
+            130,
+            405
+          ],
+          [
+            401,
+            300
+          ],
+          [
+            15,
+            396
+          ],
+          [
+            433,
+            404
+          ],
+          [
+            100,
+            398
+          ],
+          [
+            464,
+            395
+          ],
+          [
+            73,
+            401
+          ],
+          [
+            347,
+            405
+          ],
+          [
+            402,
+            405
+          ],
+          [
+            380,
+            392
+          ]
+        ],
+        "master": [
+          [
+            233,
+            391
+          ],
+          [
+            200,
+            388
+          ],
+          [
+            258,
+            388
+          ],
+          [
+            237,
+            352
+          ],
+          [
+            168,
+            348
+          ],
+          [
+            274,
+            354
+          ],
+          [
+            167,
+            348
+          ],
+          [
+            344,
+            335
+          ],
+          [
+            134,
+            340
+          ],
+          [
+            314,
+            338
+          ],
+          [
+            185,
+            406
+          ],
+          [
+            185,
+            389
+          ],
+          [
+            185,
+            421
+          ]
+        ],
+        "fairies": [
+          [
+            34,
+            178
+          ],
+          [
+            444,
+            227
+          ],
+          [
+            34,
+            225
+          ],
+          [
+            441,
+            166
+          ],
+          [
+            90,
+            170
+          ],
+          [
+            385,
+            222
+          ],
+          [
+            94,
+            230
+          ],
+          [
+            385,
+            165
+          ],
+          [
+            147,
+            168
+          ],
+          [
+            327,
+            226
+          ],
+          [
+            206,
+            164
+          ],
+          [
+            267,
+            232
+          ],
+          [
+            209,
+            228
+          ],
+          [
+            323,
+            162
+          ],
+          [
+            265,
+            168
+          ],
+          [
+            151,
+            232
+          ]
+        ]
+      }
+    },
+    "shop": {
+      "scroll": {
+        "slow_drag_top": [
+          404,
+          495
+        ],
+        "slow_drag_bottom": [
+          404,
+          575
+        ]
+      }
+    },
+    "inbox": {
+      "clan_header": [
+        340,
+        97
+      ],
+      "news_header": [
+        138,
+        97
+      ]
+    },
+    "travel": {
+      "tabs": {
+        "pets": [
+          278,
+          781
+        ],
+        "shop": [
+          441,
+          781
+        ],
+        "heroes": [
+          118,
+          781
+        ],
+        "master": [
+          42,
+          781
+        ],
+        "artifacts": [
+          360,
+          781
+        ],
+        "equipment": [
+          200,
+          781
+        ]
+      },
+      "scroll": {
+        "drag_top": [
+          404,
+          495
+        ],
+        "drag_bottom": [
+          404,
+          750
+        ]
+      },
+      "collapse": [
+        384,
+        13
+      ],
+      "uncollapse": [
+        384,
+        448
+      ]
+    },
+    "fairies": {
+      "collect_or_watch": [
+        361,
+        606
+      ]
+    },
+    "artifacts": {
+      "multiplier": [
+        407,
+        76
+      ],
+      "discovered_artifact": [
+        406,
+        250
+      ],
+      "enchant_confirm_point": [
+        245,
+        560
+      ],
+      "discover_confirm_point": [
+        245,
+        560
+      ]
+    },
+    "shop_pets": {
+      "purchase_pet": [
+        241,
+        567
+      ]
+    },
+    "export_data": {
+      "options_icon": [
+        29,
+        25
+      ],
+      "master_screen": [
+        38,
+        579
+      ]
+    },
+    "main_screen": {
+      "middle": [
+        240,
+        400
+      ],
+      "top_middle": [
+        240,
+        120
+      ]
+    },
+    "tournaments": {
+      "tournaments_icon": [
+        31,
+        96
+      ],
+      "tournaments_status": [
+        32,
+        74
+      ]
+    },
+    "achievements": {
+      "achievements_icon": [
+        204,
+        500
+      ]
+    },
+    "level_heroes": {
+      "buy_max": [
+        401,
+        74
+      ],
+      "level_heroes_autobuy": [
+        282,
+        509
+      ],
+      "possible_hero_level_points": [
+        [
+          405,
+          125
+        ],
+        [
+          405,
+          158
+        ],
+        [
+          405,
+          192
+        ],
+        [
+          405,
+          237
+        ],
+        [
+          405,
+          272
+        ],
+        [
+          405,
+          315
+        ],
+        [
+          405,
+          346
+        ],
+        [
+          405,
+          391
+        ],
+        [
+          405,
+          425
+        ],
+        [
+          405,
+          467
+        ],
+        [
+          405,
+          503
+        ],
+        [
+          405,
+          540
+        ],
+        [
+          405,
+          578
+        ],
+        [
+          405,
+          612
+        ],
+        [
+          405,
+          651
+        ],
+        [
+          405,
+          690
+        ],
+        [
+          405,
+          723
+        ],
+        [
+          405,
+          759
+        ]
+      ],
+      "level_heroes_autobuy_color_check": [
+        283,
+        491
+      ]
+    },
+    "level_master": {
+      "level": [
+        408,
+        579
+      ]
+    },
+    "level_skills": {
+      "max_points": [
+        [
+          248,
+          353
+        ],
+        [
+          248,
+          427
+        ],
+        [
+          248,
+          503
+        ],
+        [
+          248,
+          578
+        ],
+        [
+          248,
+          653
+        ],
+        [
+          248,
+          727
+        ]
+      ],
+      "skill_points": [
+        [
+          401,
+          341
+        ],
+        [
+          401,
+          417
+        ],
+        [
+          401,
+          492
+        ],
+        [
+          401,
+          568
+        ],
+        [
+          401,
+          644
+        ],
+        [
+          401,
+          719
+        ]
+      ]
+    },
+    "headgear_swap": {
+      "headgear_panel": [
+        107,
+        85
+      ],
+      "skill_upgrade_wait": [
+        316,
+        266
+      ],
+      "headgear_panel_color_check": [
+        131,
+        109
+      ]
+    },
+    "activate_skills": {
+      "skill_points": {
+        "war_cry": [
+          360,
+          713
+        ],
+        "fire_sword": [
+          280,
+          713
+        ],
+        "shadow_clone": [
+          441,
+          713
+        ],
+        "deadly_strike": [
+          120,
+          713
+        ],
+        "hand_of_midas": [
+          198,
+          713
+        ],
+        "heavenly_strike": [
+          41,
+          713
+        ]
+      }
+    },
+    "check_game_state": {
+      "emulator_drag_end": [
+        240,
+        709
+      ],
+      "emulator_drag_start": [
+        240,
+        787
+      ],
+      "emulator_home_point": [
+        240,
+        787
+      ],
+      "misc_warning_header_yes": [
+        338,
+        529
+      ]
+    },
+    "shop_video_chest": {
+      "collect_point": [
+        242,
+        706
+      ],
+      "collect_color_point": [
+        242,
+        706
+      ],
+      "collect_point_pause": [
+        312,
+        698
+      ]
+    },
+    "prestige_close_to_max": {
+      "skill_tree_icon": [
+        125,
+        506
+      ]
+    }
+  },
+  "regions": {
+    "tap": {
+      "one_time_offer_area": [
+        386,
+        188,
+        480,
+        312
+      ],
+      "one_time_offer_prevent_area": [
+        380,
+        200,
+        480,
+        300
+      ],
+      "collect_equipment_prevent_area": [
+        295,
+        263,
+        410,
+        478
+      ]
+    },
+    "eggs": {
+      "search_area": [
+        400,
+        257,
+        476,
+        336
+      ]
+    },
+    "shop": {
+      "small_shop_exit_area": [
+        0,
+        39,
+        480,
+        275
+      ]
+    },
+    "inbox": {
+      "exit_area": [
+        386,
+        22,
+        448,
+        74
+      ],
+      "search_area": [
+        403,
+        309,
+        474,
+        378
+      ],
+      "collect_all_area": [
+        150,
+        712,
+        318,
+        767
+      ]
+    },
+    "perks": {
+      "free_area": [
+        326,
+        109,
+        480,
+        765
+      ],
+      "okay_area": [
+        45,
+        404,
+        442,
+        638
+      ],
+      "icons_area": [
+        0,
+        105,
+        73,
+        758
+      ],
+      "cancel_area": [
+        45,
+        404,
+        443,
+        638
+      ],
+      "header_area": [
+        36,
+        158,
+        442,
+        290
+      ],
+      "diamond_area": [
+        60,
+        291,
+        436,
+        569
+      ]
+    },
+    "travel": {
+      "exit_area": [
+        0,
+        5,
+        480,
+        495
+      ],
+      "search_area": [
+        0,
+        749,
+        480,
+        800
+      ],
+      "collapse_area": [
+        331,
+        0,
+        420,
+        34
+      ],
+      "collapsed_area": [
+        331,
+        420,
+        420,
+        464
+      ],
+      "duplicate_area": [
+        0,
+        633,
+        71,
+        703
+      ]
+    },
+    "fairies": {
+      "collect_area": [
+        25,
+        557,
+        459,
+        652
+      ],
+      "no_thanks_area": [
+        25,
+        557,
+        240,
+        639
+      ],
+      "ad_block_collect_area": [
+        25,
+        557,
+        459,
+        652
+      ]
+    },
+    "prestige": {
+      "prestige_icon_area": [
+        317,
+        638,
+        476,
+        716
+      ],
+      "prestige_daily_limit_area": [
+        27,
+        523,
+        449,
+        717
+      ],
+      "prestige_confirm_icon_area": [
+        19,
+        708,
+        460,
+        800
+      ],
+      "prestige_confirm_confirm_icon_area": [
+        20,
+        593,
+        460,
+        708
+      ]
+    },
+    "artifacts": {
+      "buy_area": [
+        322,
+        52,
+        477,
+        100
+      ],
+      "1_open_area": [
+        255,
+        61,
+        331,
+        91
+      ],
+      "5_open_area": [
+        173,
+        62,
+        249,
+        90
+      ],
+      "search_area": [
+        0,
+        135,
+        73,
+        764
+      ],
+      "25_open_area": [
+        91,
+        59,
+        168,
+        90
+      ],
+      "max_open_area": [
+        10,
+        63,
+        87,
+        93
+      ],
+      "enchant_icon_area": [
+        323,
+        131,
+        477,
+        208
+      ],
+      "discover_icon_area": [
+        323,
+        131,
+        477,
+        208
+      ],
+      "percent_enabled_area": [
+        270,
+        52,
+        329,
+        106
+      ],
+      "percent_disabled_area": [
+        270,
+        52,
+        329,
+        106
+      ],
+      "enchant_confirm_header_area": [
+        160,
+        193,
+        324,
+        227
+      ],
+      "discover_confirm_header_area": [
+        160,
+        193,
+        324,
+        227
+      ]
+    },
+    "shop_pets": {
+      "shop_pet_header_area": [
+        86,
+        153,
+        370,
+        218
+      ]
+    },
+    "fight_boss": {
+      "search_area": [
+        347,
+        5,
+        480,
+        66
+      ]
+    },
+    "leave_boss": {
+      "search_area": [
+        347,
+        5,
+        476,
+        66
+      ]
+    },
+    "event_panel": {
+      "event_area": [
+        0,
+        60,
+        61,
+        275
+      ]
+    },
+    "export_data": {
+      "master_header_area": [
+        115,
+        20,
+        387,
+        90
+      ],
+      "options_export_area": [
+        46,
+        670,
+        240,
+        716
+      ],
+      "options_header_area": [
+        150,
+        47,
+        326,
+        94
+      ],
+      "language_header_area": [
+        145,
+        32,
+        350,
+        79
+      ]
+    },
+    "tournaments": {
+      "exit_area": [
+        392,
+        69,
+        472,
+        133
+      ],
+      "join_area": [
+        132,
+        613,
+        376,
+        744
+      ],
+      "collect_area": [
+        27,
+        686,
+        226,
+        800
+      ]
+    },
+    "achievements": {
+      "exit_area": [
+        390,
+        26,
+        447,
+        73
+      ],
+      "search_area": [
+        167,
+        477,
+        240,
+        524
+      ],
+      "collect_area": [
+        294,
+        149,
+        432,
+        687
+      ],
+      "daily_header_area": [
+        72,
+        73,
+        154,
+        109
+      ]
+    },
+    "level_heroes": {
+      "buy_max_area": [
+        316,
+        52,
+        480,
+        101
+      ],
+      "buy_max_open_area": [
+        0,
+        52,
+        89,
+        101
+      ],
+      "max_level_search_area": [
+        325,
+        105,
+        476,
+        764
+      ]
+    },
+    "level_skills": {
+      "skill_regions": [
+        [
+          316,
+          306,
+          477,
+          380
+        ],
+        [
+          316,
+          380,
+          477,
+          456
+        ],
+        [
+          316,
+          458,
+          477,
+          533
+        ],
+        [
+          316,
+          533,
+          477,
+          607
+        ],
+        [
+          316,
+          607,
+          477,
+          682
+        ],
+        [
+          316,
+          682,
+          477,
+          759
+        ]
+      ]
+    },
+    "daily_rewards": {
+      "search_area": [
+        400,
+        145,
+        473,
+        220
+      ],
+      "collect_area": [
+        131,
+        488,
+        338,
+        574
+      ]
+    },
+    "headgear_swap": {
+      "type_icon_area": [
+        287,
+        268,
+        330,
+        300
+      ],
+      "type_icon_areas": {
+        "1": [
+          287,
+          111,
+          330,
+          160
+        ],
+        "3": [
+          287,
+          268,
+          330,
+          300
+        ],
+        "4": [
+          287,
+          344,
+          330,
+          373
+        ],
+        "2": [
+          287,
+          192,
+          330,
+          224
+        ]
+      },
+      "equipment_regions": [
+        [
+          0,
+          149,
+          480,
+          223
+        ],
+        [
+          0,
+          227,
+          480,
+          300
+        ],
+        [
+          0,
+          306,
+          480,
+          378
+        ],
+        [
+          0,
+          374,
+          480,
+          456
+        ],
+        [
+          0,
+          461,
+          480,
+          532
+        ],
+        [
+          0,
+          539,
+          480,
+          610
+        ],
+        [
+          0,
+          617,
+          480,
+          690
+        ]
+      ]
+    },
+    "check_game_state": {
+      "frozen_screenshot_area": [
+        0,
+        0,
+        480,
+        250
+      ],
+      "application_icon_search_area": [
+        0,
+        190,
+        480,
+        705
+      ]
+    },
+    "collapse_prompts": {
+      "collapse_prompts_area": [
+        0,
+        0,
+        480,
+        430
+      ]
+    },
+    "shop_video_chest": {
+      "video_chest_header_area": [
+        66,
+        61,
+        430,
+        122
+      ]
+    },
+    "prestige_close_to_max": {
+      "skill_tree_exit_area": [
+        391,
+        27,
+        448,
+        83
+      ],
+      "event_icon_search_area": [
+        309,
+        633,
+        380,
+        674
+      ],
+      "skill_tree_header_area": [
+        123,
+        31,
+        370,
+        79
+      ],
+      "skill_tree_search_area": [
+        160,
+        742,
+        313,
+        786
+      ]
+    }
+  },
+  "artifacts": {
+    "a": [
+      "charged_card",
+      "book_of_prophecy",
+      "khrysos_bowl",
+      "the_bronzed_compass",
+      "evergrowing_stack",
+      "heavenly_sword",
+      "divine_retribution",
+      "drunken_hammer",
+      "samosek_sword",
+      "the_retaliator",
+      "stryfes_peace",
+      "heros_blade",
+      "the_sword_of_storms",
+      "furies_bow",
+      "charm_of_the_ancient",
+      "tiny_titan_tree",
+      "helm_of_hermes",
+      "oryans_charm",
+      "apollo_orb",
+      "earrings_of_portara",
+      "helheim_skull",
+      "oaths_burden",
+      "crown_of_the_constellation",
+      "titanias_sceptre",
+      "blade_of_damocles",
+      "helmet_of_madness",
+      "titanium_plating",
+      "moonlight_bracelet",
+      "amethyst_staff",
+      "spearits_vigil",
+      "sword_of_the_royals",
+      "the_cobalt_plate",
+      "sigils_of_judgement",
+      "foliage_of_the_keeper",
+      "laborers_pendant",
+      "bringer_of_ragnarok",
+      "parchment_of_foresight",
+      "unbound_gauntlet",
+      "lucky_foot_of_al-miraj",
+      "morgelai_sword",
+      "ringing_stone",
+      "quill_of_scrolls",
+      "old_kings_stamp",
+      "the_magnifier",
+      "the_treasure_of_fergus",
+      "the_white_dwarf",
+      "sticky_fruit",
+      "hades_orb"
+    ],
+    "b": [
+      "chest_of_contentment",
+      "heroic_shield",
+      "zakynthos_coin",
+      "great_fay_medallion",
+      "neko_sculpture",
+      "coins_of_ebizu",
+      "fruit_of_eden",
+      "influential_elixir",
+      "shimmering_oil",
+      "avian_feather",
+      "fagins_grip",
+      "titans_mask",
+      "royal_toxin",
+      "elixir_of_eden",
+      "hourglass_of_the_impatient",
+      "phantom_timepiece",
+      "infinity_pendulum",
+      "glove_of_kuma",
+      "titan_spear",
+      "oak_staff",
+      "the_arcana_cloak",
+      "hunters_ointment",
+      "axe_of_muerte",
+      "the_masters_sword",
+      "mystical_beans_of_senzu"
+    ],
+    "c": [
+      "corrupted_rune_heart",
+      "durendal_sword",
+      "forbidden_scroll",
+      "ring_of_fealty",
+      "glacial_axe",
+      "aegis",
+      "swamp_gauntlet",
+      "ambrosia_elixir",
+      "mystic_staff",
+      "egg_of_fortune",
+      "divine_chalice",
+      "invaders_shield",
+      "essence_of_the_kitsune",
+      "oberon_pendant",
+      "lost_kings_mask",
+      "staff_of_radiance",
+      "aram_spear",
+      "ward_of_the_darkness"
+    ],
+    "s": [
+      "book_of_shadows",
+      "stone_of_the_valrunes",
+      "flute_of_the_soloist",
+      "heart_of_storms",
+      "ring_of_calisto",
+      "invaders_gjallarhorn",
+      "boots_of_hermes"
+    ]
+  },
+  "parameters": {
+    "tap": {
+      "pause": 1,
+      "button": "left",
+      "offset_max": 6,
+      "offset_min": 1,
+      "tap_heroes_loops": 3,
+      "tap_fairies_modulo": 15,
+      "one_time_offer_precision": 0.8,
+      "tap_heroes_remove_percent": 0.25,
+      "tap_collapse_prompts_modulo": 8
+    },
+    "eggs": {
+      "search_pause": 1,
+      "search_precision": 0.8,
+      "post_collect_pause": 2,
+      "post_collect_clicks": 5,
+      "post_collect_interval": 0.4
+    },
+    "shop": {
+      "slow_drag_pause": 1.75,
+      "post_purchase_pause": 5,
+      "post_purchase_clicks": 2,
+      "small_shop_exit_pause": 1,
+      "post_purchase_interval": 2.5,
+      "small_shop_exit_precision": 0.8
+    },
+    "inbox": {
+      "exit_pause": 1,
+      "click_loops": 3,
+      "click_pause": 1,
+      "search_pause": 1.5,
+      "exit_precision": 0.8,
+      "search_precision": 0.8,
+      "collect_all_pause": 1,
+      "collect_all_precision": 0.8,
+      "collect_all_wait_pause": 2,
+      "collect_all_wait_clicks": 7,
+      "collect_all_wait_interval": 0.4
+    },
+    "perks": {
+      "free_pause": 1,
+      "okay_pause": 1,
+      "cancel_pause": 1,
+      "icons_timeout": 8,
+      "free_precision": 0.8,
+      "okay_precision": 0.8,
+      "use_perk_pause": 1,
+      "icons_precision": 0.8,
+      "cancel_precision": 0.8,
+      "header_precision": 0.8,
+      "diamond_precision": 0.8,
+      "position_x_padding": 394,
+      "position_y_padding": 36,
+      "enabled_perk_timeout": 5,
+      "tier_search_precision": 0.85,
+      "open_perk_prompt_pause": 2,
+      "post_use_open_master_pause": 1.5
+    },
+    "travel": {
+      "precision": 0.75,
+      "drag_pause": 1.75,
+      "exit_pause": 1.5,
+      "click_pause": 1,
+      "timeout_drag": 20,
+      "timeout_click": 10,
+      "collapse_pause": 1.5,
+      "exit_precision": 0.8,
+      "scroll_precision": 0.8,
+      "timeout_collapse": 10,
+      "uncollapse_pause": 1.5,
+      "collapse_precision": 0.75,
+      "uncollapse_precision": 0.75,
+      "timeout_travel_main_screen": 5
+    },
+    "fairies": {
+      "collect_pause": 2,
+      "ad_block_pause": 2,
+      "no_thanks_pause": 2,
+      "ad_block_timeout": 15,
+      "collect_precision": 0.8,
+      "no_thanks_precision": 0.8,
+      "ad_block_pause_not_found": 2,
+      "ad_block_collect_precision": 0.8
+    },
+    "collapse": {
+      "timeout_collapse": 3,
+      "collapse_loop_pause": 0.6,
+      "collapse_loop_pause_not_found": 0.3
+    },
+    "prestige": {
+      "prestige_icon_pause": 3,
+      "prestige_icon_timeout": 5,
+      "prestige_icon_precision": 0.8,
+      "prestige_confirm_icon_pause": 3,
+      "prestige_confirm_icon_timeout": 5,
+      "prestige_daily_limit_precision": 0.8,
+      "prestige_confirm_icon_precision": 0.8,
+      "prestige_confirm_confirm_icon_pause": 25,
+      "prestige_confirm_confirm_icon_timeout": 10,
+      "prestige_confirm_confirm_icon_precision": 0.8
+    },
+    "artifacts": {
+      "buy_precision": 0.8,
+      "upgrade_pause": 1,
+      "timeout_search": 20,
+      "upgrade_clicks": 7,
+      "multiplier_pause": 1,
+      "search_precision": 0.7,
+      "upgrade_interval": 0.5,
+      "position_x_padding": 391,
+      "position_y_padding": 22,
+      "post_collect_pause": 1,
+      "timeout_multiplier": 5,
+      "enchant_click_pause": 1,
+      "post_collect_clicks": 5,
+      "discover_click_pause": 1,
+      "enchant_confirm_pause": 1,
+      "multiplier_open_pause": 1,
+      "post_collect_interval": 0.4,
+      "discover_confirm_pause": 1,
+      "enchant_icon_precision": 0.8,
+      "discover_icon_precision": 0.8,
+      "timeout_multiplier_open": 5,
+      "timeout_percent_disabled": 5,
+      "discovered_artifact_pause": 1,
+      "multiplier_open_precision": 0.8,
+      "percent_enabled_precision": 0.8,
+      "percent_disabled_precision": 0.8,
+      "enchant_confirm_header_precision": 0.8,
+      "discover_confirm_header_precision": 0.8
+    },
+    "shop_pets": {
+      "pet_precision": 0.7,
+      "chests_precision": 0.8,
+      "purchase_pet_pause": 5,
+      "check_purchase_pause": 3,
+      "daily_deals_precision": 0.8,
+      "shop_pet_header_precision": 0.8,
+      "timeout_search_daily_deals": 20
+    },
+    "fight_boss": {
+      "search_pause": 1,
+      "reconnect_pause": 7,
+      "search_precision": 0.8,
+      "fight_boss_timeout": 5,
+      "search_not_found_pause": 0.5,
+      "search_pause_not_found": 0.75
+    },
+    "leave_boss": {
+      "search_pause": 1,
+      "search_precision": 0.8,
+      "leave_boss_timeout": 3,
+      "search_pause_not_found": 0.75
+    },
+    "event_panel": {
+      "timeout_expand": 7,
+      "event_precision": 0.65,
+      "timeout_collapse": 7,
+      "expand_loop_pause": 0.75,
+      "collapse_loop_pause": 0.75,
+      "expand_loop_pause_not_found": 0.75,
+      "collapse_loop_pause_not_found": 0.5
+    },
+    "export_data": {
+      "exit_pause": 4.5,
+      "options_icon_pause": 1,
+      "master_screen_pause": 2.5,
+      "options_export_pause": 1,
+      "timeout_export_click": 10,
+      "timeout_master_click": 10,
+      "timeout_options_exit": 10,
+      "timeout_options_click": 10,
+      "master_header_precision": 0.8,
+      "options_export_precision": 0.8,
+      "options_header_precision": 0.8,
+      "language_header_precision": 0.8,
+      "options_export_pause_not_found": 1
+    },
+    "tournaments": {
+      "exit_pause": 1,
+      "icon_pause": 3,
+      "join_pause": 2,
+      "join_timeout": 8,
+      "collect_pause": 1,
+      "exit_precision": 0.8,
+      "join_precision": 0.8,
+      "collect_precision": 0.8,
+      "post_collect_pause": 2,
+      "post_collect_clicks": 20,
+      "post_collect_interval": 0.6
+    },
+    "achievements": {
+      "exit_pause": 1,
+      "icon_pause": 2.5,
+      "collect_pause": 1.5,
+      "exit_precision": 0.8,
+      "search_precision": 0.8,
+      "collect_precision": 0.8,
+      "daily_header_pause": 0.75,
+      "daily_header_precision": 0.8
+    },
+    "level_heroes": {
+      "buy_max_pause": 1,
+      "timeout_buy_max": 5,
+      "buy_max_precision": 0.8,
+      "hero_level_clicks": 7,
+      "buy_max_open_pause": 2,
+      "timeout_heroes_dupe": 20,
+      "timeout_buy_max_open": 5,
+      "hero_level_post_pause": 0.4,
+      "buy_max_open_precision": 0.8,
+      "hero_level_clicks_pause": 0.05,
+      "hero_level_clicks_interval": 0.025,
+      "level_heroes_autobuy_pause": 1,
+      "max_level_search_precision": 0.8,
+      "check_possible_point_x_padding": 55,
+      "level_heroes_autobuy_check_pause": 0.2,
+      "level_heroes_autobuy_check_range": 8
+    },
+    "level_master": {
+      "level_clicks": 7,
+      "level_interval": 0.2
+    },
+    "level_skills": {
+      "level_max_pause": 0.75,
+      "skills_max_level": 30,
+      "timeout_level_max": 5,
+      "level_clicks_pause": 0.75,
+      "max_level_precision": 0.8,
+      "level_clicks_interval": 0.2,
+      "level_max_click_pause": 0.25
+    },
+    "daily_rewards": {
+      "search_pause": 3,
+      "collect_pause": 1,
+      "search_precision": 0.8,
+      "collect_precision": 0.75,
+      "post_collect_pause": 2,
+      "post_collect_clicks": 5,
+      "post_collect_interval": 0.6
+    },
+    "headgear_swap": {
+      "type_icon_precision": 0.8,
+      "headgear_panel_pause": 0.6,
+      "equipment_equip_pause": 1,
+      "equipment_equip_timeout": 5,
+      "headgear_swap_wait_pause": 0.3,
+      "equipment_equip_precision": 0.8,
+      "powerful_damage_precision": 0.8,
+      "equipment_locked_precision": 0.8,
+      "equipment_equipped_precision": 0.8,
+      "timeout_headgear_panel_click": 6,
+      "equipment_equip_pause_not_found": 1
+    },
+    "activate_skills": {
+      "activate_pause": 0.1,
+      "activate_interval": 0.3
+    },
+    "check_game_state": {
+      "state_precision": 0.8,
+      "fairies_pre_pause": 2,
+      "fairies_pre_clicks": 5,
+      "emulator_drag_pause": 0.5,
+      "emulator_home_pause": 3,
+      "emulator_home_clicks": 3,
+      "emulator_home_offset": 0,
+      "fairies_pre_interval": 0.4,
+      "check_game_state_pause": 0.4,
+      "emulator_home_interval": 0.3,
+      "frozen_screenshot_pause": 3,
+      "application_icon_click_pause": 20,
+      "misc_warning_header_precision": 0.8,
+      "misc_warning_header_yes_pause": 2,
+      "frozen_screenshot_before_pause": 1,
+      "check_game_state_fairies_timeout": 5,
+      "check_game_state_generic_timeout": 5,
+      "application_icon_search_precision": 0.75,
+      "misc_server_maintenance_precision": 0.8
+    },
+    "collapse_prompts": {
+      "collapse_prompts_pause": 1,
+      "collapse_prompts_timeout": 5,
+      "collapse_prompts_precision": 0.8,
+      "collapse_prompts_not_found_pause": 1
+    },
+    "shop_video_chest": {
+      "watch_pause": 3,
+      "collect_pause": 5,
+      "diamonds_precision": 0.8,
+      "collect_point_pause": 1.5,
+      "watch_video_precision": 0.8,
+      "timeout_search_watch_video": 20,
+      "watch_video_icon_precision": 0.8,
+      "collect_video_icon_precision": 0.8,
+      "video_chest_header_precision": 0.8
+    },
+    "prestige_close_to_max": {
+      "skill_tree_exit_pause": 1.5,
+      "skill_tree_click_pause": 1,
+      "skill_tree_exit_precision": 0.8,
+      "event_icon_search_precision": 0.8,
+      "skill_tree_header_precision": 0.8,
+      "skill_tree_search_precision": 0.8
+    }
+  },
+  "artifacts_max": [
+    "hourglass_of_the_impatient",
+    "phantom_timepiece",
+    "forbidden_scroll",
+    "ring_of_fealty",
+    "glacial_axe",
+    "aegis",
+    "swamp_gauntlet",
+    "infinity_pendulum",
+    "glove_of_kuma",
+    "titan_spear",
+    "oak_staff",
+    "the_arcana_cloak",
+    "hunters_ointment",
+    "ambrosia_elixir",
+    "mystic_staff",
+    "mystical_beans_of_senzu",
+    "egg_of_fortune",
+    "divine_chalice",
+    "invaders_shield",
+    "axe_of_muerte",
+    "essence_of_the_kitsune",
+    "boots_of_hermes",
+    "unbound_gauntlet",
+    "oberon_pendant",
+    "lucky_foot_of_al-miraj",
+    "lost_kings_mask",
+    "staff_of_radiance",
+    "morgelai_sword",
+    "ringing_stone",
+    "quill_of_scrolls",
+    "old_kings_stamp",
+    "the_masters_sword",
+    "the_magnifier",
+    "the_treasure_of_fergus",
+    "the_white_dwarf",
+    "aram_spear",
+    "ward_of_the_darkness"
+  ],
+  "max_level_artifacts": [
+    "hourglass_of_the_impatient",
+    "phantom_timepiece",
+    "forbidden_scroll",
+    "ring_of_fealty",
+    "glacial_axe",
+    "aegis",
+    "swamp_gauntlet",
+    "infinity_pendulum",
+    "glove_of_kuma",
+    "titan_spear",
+    "oak_staff",
+    "the_arcana_cloak",
+    "hunters_ointment",
+    "ambrosia_elixir",
+    "mystic_staff",
+    "mystical_beans_of_senzu",
+    "egg_of_fortune",
+    "divine_chalice",
+    "invaders_shield",
+    "axe_of_muerte",
+    "essence_of_the_kitsune",
+    "boots_of_hermes",
+    "unbound_gauntlet",
+    "oberon_pendant",
+    "lucky_foot_of_al-mi-raj",
+    "lost_kings_mask",
+    "staff_of_radiance",
+    "morgelai_sword",
+    "ringing_stone",
+    "quill_of_scrolls",
+    "old_kings_stamp",
+    "the_masters_sword",
+    "the_magnifier",
+    "the_treasure_of_fergus",
+    "the_white_dwarf",
+    "aram_spear",
+    "ward_of_the_darkness"
+  ]
+}
