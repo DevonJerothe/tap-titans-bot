@@ -2,32 +2,16 @@
 
 block_cipher = None
 
+repository = "<REPO_DIR>"
+environment = "<ENV_DIR>"
 
 a = Analysis(
     ['application.py'],
-    pathex=['C:\\Users\\Votum\\repos\\tap-titans-bot'],
+    pathex=[repository + 'tap-titans-bot'],
     binaries=[],
     datas=[
-        ('C:\\Users\\Votum\\repos\\tap-titans-bot\\media\\flame.ico', 'media'),
-    ],
-    hiddenimports=[
-        "sentry_sdk.integrations.stdlib",
-        "sentry_sdk.integrations.django",
-        "sentry_sdk.integrations.flask",
-        "sentry_sdk.integrations.bottle",
-        "sentry_sdk.integrations.falcon",
-        "sentry_sdk.integrations.sanic",
-        "sentry_sdk.integrations.celery",
-        "sentry_sdk.integrations.rq",
-        "sentry_sdk.integrations.aiohttp",
-        "sentry_sdk.integrations.tornado",
-        "sentry_sdk.integrations.sqlalchemy",
-        "sentry_sdk.integrations.excepthook",
-        "sentry_sdk.integrations.dedupe",
-        "sentry_sdk.integrations.modules",
-        "sentry_sdk.integrations.argv",
-        "sentry_sdk.integrations.logging",
-        "sentry_sdk.integrations.threading",
+        (repository + '\\media\\flame.ico', 'media'),
+        (environment + '\\Lib\\site-packages\\peewee_migrate\\template.txt', 'peewee_migrate'),
     ],
     hookspath=[],
     runtime_hooks=[],
@@ -49,7 +33,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='ttb',
+    name='taptitansbot',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
