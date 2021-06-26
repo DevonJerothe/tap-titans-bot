@@ -138,16 +138,3 @@ def create_logger(
     logger.setLevel(level=logging.DEBUG)
 
     return logger, _STREAM
-
-
-def decrypt_secret(secret):
-    """
-    Decrypt a given "secret" string.
-
-    "Secrets" in this sense are just simply scrambled strings and are not meant to be
-    "secure" or "safe" from un-obfuscation, this just acts as a layer between them to prevent
-    easy local modification.
-    """
-    return "".join([
-        DECRYPT_MAP[character] for character in secret
-    ])
