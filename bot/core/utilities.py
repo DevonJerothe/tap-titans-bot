@@ -1,5 +1,3 @@
-from bot.core.constants import DECRYPT_MAP
-
 import datetime
 import logging
 
@@ -98,6 +96,7 @@ def create_logger(
     instance_name,
     instance_func,
     session_id,
+    get_settings_obj,
 ):
     """
     Generate a new logger instance with the proper handlers associated.
@@ -130,7 +129,7 @@ def create_logger(
         instance_id=instance_id,
         instance_func=instance_func,
     )
-    handler_stream.setLevel(level=logging.INFO)
+    handler_stream.setLevel(level=logging.getLevelName(get_settings_obj().log_level))
     handler_stream.setFormatter(fmt=log_formatter)
 
     logger.addHandler(hdlr=handler_file)
