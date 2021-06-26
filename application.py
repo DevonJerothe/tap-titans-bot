@@ -1,54 +1,63 @@
+from settings import (
+    LOCAL_DATA_DIRECTORY,
+    LOCAL_DATA_LOGS_DIRECTORY,
+)
+
+from database.database import (
+    db,
+    router,
+)
+from database.models.settings.settings import Settings
+from database.models.instance.instance import Instance
+from database.models.configuration.configuration import Configuration
+from database.models.event.event import Event
+
 from gui.main import (
     GUI,
 )
 
-import sentry_sdk
-import traceback
+import os
 
 
-__APPLICATION_NAME__ = "Tap Titans Bot"
-__APPLICATION_VERSION__ = "1.1.2"
-__APPLICATION_DISCORD__ = "https://discord.gg/xCZnHNT"
-
-__SENTRY_DSN__ = "https://bb8849b87d42407d9127fe6a7a1fd42c@o467351.ingest.sentry.io/5517455"
-__SENTRY_RELEASE__ = "%(application_name)s@%(version)s" % {
-    "application_name": __APPLICATION_NAME__.lower().replace(" ", "-"),
-    "version": __APPLICATION_VERSION__,
-}
-
-
-def before_send(event, hint):
+def handle_local_directories():
     """
-    A frozen pyinstaller application currently does not support proper
-    exception lines and information... This shim at least let's us place
-    the formatted exception into our extra information.
-
-    See: https://github.com/getsentry/sentry-python/issues/812
-
-    If this is amended, this can be removed and the normal
-    behaviour should be fine.
+    Generate local directories and files if they aren't already available.
     """
-    event["extra"]["exception"] = ["".join(
-        traceback.format_exception(*hint["exc_info"])
-    )]
-    return event
+    for directory in [
+        LOCAL_DATA_DIRECTORY,
+        LOCAL_DATA_LOGS_DIRECTORY,
+    ]:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
 
 if __name__ == "__main__":
-    # Sentry is used to ensure any errors are caught and successfully
-    # sent along for auditing and analyzing.
-    sentry_sdk.init(
-        dsn=__SENTRY_DSN__,
-        release=__SENTRY_RELEASE__,
-        before_send=before_send,
-    )
-    # Initializing a new GUI instance. Most business logic
-    # and validation type work is handled inside of the instance
-    # itself. This is done to ensure we can display messages or
-    # notifications to the user about errors, etc.
+    # Local data directory should be built before
+    # dealing with any functionality that may need
+    # to access that directory.
+    handle_local_directories()
+    # Ensure database tables are upto date and generated
+    # where applicable.
+    db.create_tables([
+        Settings,
+        Instance,
+        Configuration,
+        Event,
+    ])
+    # Loop through available models, creating them in the
+    # migrator before running our router.
+    for model in [
+        Settings,
+        Instance,
+        Configuration,
+        Event,
+    ]:
+        router.migrator.create_table(model)
+
+    router.run()
+
     gui = GUI(
-        application_name=__APPLICATION_NAME__,
-        application_version=__APPLICATION_VERSION__,
-        application_discord=__APPLICATION_DISCORD__,
+        application_name="Tap Titans Bot",
+        application_version="1.2.0",
     )
     gui.run()
