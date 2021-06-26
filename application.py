@@ -1,4 +1,5 @@
 from settings import (
+    MIGRATIONS_DIRECTORY,
     LOCAL_DATA_DIRECTORY,
     LOCAL_DATA_LOGS_DIRECTORY,
 )
@@ -54,6 +55,7 @@ if __name__ == "__main__":
     ]:
         router.migrator.create_table(model)
 
+    router.migrate_dir = MIGRATIONS_DIRECTORY
     router.run()
 
     gui = GUI(
