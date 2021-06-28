@@ -128,7 +128,7 @@ class PrestigeCloseToMax(Prestige):
                 )
                 # We need to also make sure the fight boss function is no longer
                 # scheduled to run for the rest of this prestige.
-                self.bot.cancel_scheduled_function(tags="fight_boss")
+                self.bot.cancel_scheduled_plugin(tags="fight_boss")
                 # Instead of executing or scheduling our prestige right away,
                 # we will check for the fight boss icon and if it's present,
                 # then we will execute/schedule.
