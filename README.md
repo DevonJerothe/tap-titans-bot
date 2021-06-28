@@ -1,7 +1,7 @@
 ![TapTitansBot Logo](media/flame.png)
 
 [![Release](https://img.shields.io/github/v/release/becurrie/tap-titans-bot?color=blue&label=Release&logo=github&logoColor=white)](https://github.com/becurrie/tap-titans-bot/releases/latest)
-[![Discord](https://img.shields.io/discord/858396057497894943?color=blue&label=Discord&logo=discord&logoColor=white)](https://discord.com/eUyUxwSAVy)
+[![Discord](https://img.shields.io/discord/858396057497894943?color=blue&label=Discord&logo=discord&logoColor=white)](https://discord.com/invite/eUyUxwSAVy)
 [![Paypal](https://img.shields.io/badge/Paypal.me-blue.svg?label=Donate&logo=paypal&logoColor=white)](https://paypal.me/becurrie)
 
 # Tap Titans Bot
@@ -23,7 +23,7 @@ below for the bot to work properly.
 ### How Do I Use The Bot?
 
 A small tutorial is available [here](https://github.com/becurrie/tap-titans-bot/wiki/Using-The-Application) with instructions on running and using the
-application, if you're running into issues, you can also join the [discord](https://discord.com/eUyUxwSAVy) server
+application, if you're running into issues, you can also join the [discord](https://discord.com/invite/eUyUxwSAVy) server
 for additional help.
 
 ---
