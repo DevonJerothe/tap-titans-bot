@@ -11,6 +11,11 @@ ICON_FILE = path.join(MEDIA_DIRECTORY, "flame.ico")
 # to ensure a more condensed format is used.
 DT_FORMAT = "%m/%d/%Y %I:%M:%S"
 
+# The discord and github urls are used so we can open new tabs
+# leading to these links for quick access by users.
+DISCORD_URL = "https://discord.com/invite/eUyUxwSAVy"
+GITHUB_URL = "https://github.com/becurrie/tap-titans-bot"
+
 # Menu definitions can make use of these constants to aid in
 # the generation of menu entries.
 MENU_DISABLED = "!"
@@ -37,5 +42,6 @@ MENU_CONFIGURATIONS = "Configurations"
 MENU_SETTINGS = "Settings"
 
 MENU_DISCORD = "Discord"
+MENU_GITHUB = "Github"
 MENU_EXIT = "Exit"
 MENU_TIMEOUT = "__TIMEOUT__"
