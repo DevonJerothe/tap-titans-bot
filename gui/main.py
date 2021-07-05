@@ -3,17 +3,11 @@ from settings import (
     LOCAL_DATA_LOGS_DIRECTORY,
 )
 
-from database.models.settings.settings import (
-    Settings,
-)
-from database.models.instance.instance import (
-    Instance,
-)
-from database.models.configuration.configuration import (
+from database.models import (
     Configuration,
-)
-from database.models.event.event import (
     Event,
+    Instance,
+    Settings,
 )
 
 from gui.utilities import (
@@ -93,7 +87,7 @@ class GUI(object):
         self._events_cache = []
 
         self.settings_obj_changed = False
-        self.settings_obj = Settings.get()
+        self.settings_obj = Settings.objects.get()
 
         self.application_name = application_name
         self.application_version = application_version
@@ -148,7 +142,7 @@ class GUI(object):
         if self.settings_obj_changed:
             # If the settings have changed (handled through the gui),
             # we'll "re-retrieve" the settings instance.
-            self.settings_obj.get()
+            self.settings_obj.refresh_from_db()
             self.settings_obj_changed = False
 
         return self.settings_obj
@@ -242,7 +236,7 @@ class GUI(object):
         )
         if event in ["Delete", "Save", "Replicate"]:
             if event == "Replicate":
-                configuration_obj.id = None
+                configuration_obj.pk = None
                 configuration_obj.name = "%(name)s (COPY)" % {
                     "name": configuration_obj.name,
                 }
@@ -263,7 +257,7 @@ class GUI(object):
                 # Save the configuration back into the object
                 # selected for modification.
                 try:
-                    Configuration.update(**values).where(Configuration.id == configuration_obj.id).execute()
+                    Configuration.objects.filter(pk=configuration_obj.pk).update(**values)
                 except Exception as exc:
                     self.log(
                         message="An Error Occurred While Trying To Save Configuration: %s" % exc
@@ -405,8 +399,8 @@ class GUI(object):
         viewed within a menu, some additional information is stored about each instance in the instances cache.
         """
         if refresh:
-            instances = Instance().generate_defaults()
-            instances = Instance.select().execute()
+            instances = Instance.objects.generate_defaults()
+            instances = Instance.objects.all()
             self._instance_active = None
             self._instances_cache = {
                 instance.name: instance
@@ -461,8 +455,8 @@ class GUI(object):
         each one.
         """
         if refresh:
-            configurations = Configuration().generate_defaults()
-            configurations = Configuration.select().execute()
+            configurations = Configuration.objects.generate_defaults()
+            configurations = Configuration.objects.all()
             self._configurations_cache = {
                 configuration.name: configuration
                 for configuration in configurations
@@ -487,7 +481,7 @@ class GUI(object):
         """Refresh the events currently available. The data stored here is done so in a way
         that it can be refreshed as needed on a polling basis through our main runtime loop.
         """
-        self._events_cache = Event.select().order_by(-Event.timestamp).execute()
+        self._events_cache = Event.objects.all().order_by("-timestamp")
 
     def stop_func(self, instance):
         """Return the current internal ``stop`` value.
@@ -611,6 +605,7 @@ class GUI(object):
                             "application_version": self.application_version,
                             "event": Event,
                             "instance": instance,
+                            "instance_obj": self._instances_cache[self._instances_names[instance]],
                             "instance_name": self._instances_names[instance],
                             "instance_func": self.instance_func,
                             "window": window,
@@ -673,10 +668,12 @@ class GUI(object):
         )
         if event == "Delete Highlighted":
             delete = [self._events_cache[index].id for index in values["table"]]
-            delete = Event.delete().where(Event.id << delete).execute()
+            delete = Event.objects.filter(pk__in=delete).delete()
             self.log(
                 message="Successfully Deleted %(count)s Event(s)..." % {
-                    "count": delete,
+                    # Count is stored in a tuple when passed back
+                    # from the orm delete call.
+                    "count": delete[0],
                 },
             )
 
@@ -720,7 +717,7 @@ class GUI(object):
         self.log(
             message="Adding New Configuration..."
         )
-        configuration = Configuration.create()
+        configuration = Configuration.objects.create()
         self.log(
             message="New Configuration: \"%(name)s\" Was Added Successfully..." % {
                 "name": configuration.name,
@@ -740,8 +737,8 @@ class GUI(object):
         )
         if event == "Save":
             try:
-                self.settings_obj.update(**values).execute()
-                self.settings_obj = self.settings_obj.get()
+                Settings.objects.filter(pk=self.settings_obj.pk).update(**values)
+                self.settings_obj.refresh_from_db()
                 self.settings_obj_changed = True
             except Exception as exc:
                 self.log(

@@ -1,31 +1,37 @@
-from peewee import (
+from django.db.models import (
+    Model,
+    Manager,
     CharField,
     TextField,
     BooleanField,
     IntegerField,
 )
 
-from database.database import (
-    BaseModel,
-)
-
 import copy
 
 
-def get_default_instance_name():
+def get_default_configuration_name():
     """Attempt to generate a default instance name based on the existing instances currently
     in the system.
     """
     # The count is used to determine if we need to add
     # an additional "index" or if we can just use "1".
-    count = Configuration.select().count()
+    count = Configuration.objects.count()
     # "Bot Instance " prepended to our default name through count.
     return "Tap Titans Bot Configuration %(count)s" % {
         "count": str(count + 1) if count else "1"
     }
 
 
-class Configuration(BaseModel):
+class ConfigurationManager(Manager):
+    def generate_defaults(self):
+        """Generate default configuration if it doesn't currently exist.
+        """
+        if self.count() == 0:
+            self.create()
+
+
+class Configuration(Model):
     grouped_fields = {
         "Generic": [
             "name",
@@ -57,12 +63,57 @@ class Configuration(BaseModel):
         "Activate Skills": [
             "activate_skills_enabled",
             "activate_skills_on_start",
-            "activate_skills_heavenly_strike",
-            "activate_skills_deadly_strike",
-            "activate_skills_hand_of_midas",
-            "activate_skills_fire_sword",
-            "activate_skills_war_cry",
-            "activate_skills_shadow_clone",
+            # All skill activation options are placed here, the first index in this list
+            # is always the column label for all the options, everything else is used to determine
+            # which field to display and use.
+            [
+                "Heavenly Strike",
+                "activate_skills_heavenly_strike_enabled",
+                "activate_skills_heavenly_strike_weight",
+                "activate_skills_heavenly_strike_interval",
+                "activate_skills_heavenly_strike_clicks",
+                "Control the activation options for the \"Heavenly Strike\" skill in game.",
+            ],
+            [
+                "Deadly Strike",
+                "activate_skills_deadly_strike_enabled",
+                "activate_skills_deadly_strike_weight",
+                "activate_skills_deadly_strike_interval",
+                "activate_skills_deadly_strike_clicks",
+                "Control the activation options for the \"Deadly Strike\" skill in game.",
+            ],
+            [
+                "Hand Of Midas",
+                "activate_skills_hand_of_midas_enabled",
+                "activate_skills_hand_of_midas_weight",
+                "activate_skills_hand_of_midas_interval",
+                "activate_skills_hand_of_midas_clicks",
+                "Control the activation options for the \"Hand Of Midas\" skill in game.",
+            ],
+            [
+                "Fire Sword",
+                "activate_skills_fire_sword_enabled",
+                "activate_skills_fire_sword_weight",
+                "activate_skills_fire_sword_interval",
+                "activate_skills_fire_sword_clicks",
+                "Control the activation options for the \"Fire Sword\" skill in game.",
+            ],
+            [
+                "War Cry",
+                "activate_skills_war_cry_enabled",
+                "activate_skills_war_cry_weight",
+                "activate_skills_war_cry_interval",
+                "activate_skills_war_cry_clicks",
+                "Control the activation options for the \"War Cry\" skill in game.",
+            ],
+            [
+                "Shadow Clone",
+                "activate_skills_shadow_clone_enabled",
+                "activate_skills_shadow_clone_weight",
+                "activate_skills_shadow_clone_interval",
+                "activate_skills_shadow_clone_clicks",
+                "Control the activation options for the \"Shadow Clone\" skill in game.",
+            ],
         ],
         "Level Heroes": [
             "level_heroes_enabled",
@@ -88,13 +139,47 @@ class Configuration(BaseModel):
             "perks_on_start",
             "perks_interval",
             "perks_spend_diamonds",
-            "perks_mega_boost",
-            "perks_power_of_swiping",
-            "perks_adrenaline_rush",
-            "perks_make_it_rain",
-            "perks_mana_potion",
-            "perks_doom",
-            "perks_clan_crate",
+            [
+                "Mega Boost",
+                "perks_mega_boost_enabled",
+                "perks_mega_boost_tier",
+                "Control the usage options for the \"Mega Boost\" perk in game.",
+            ],
+            [
+                "Power Of Swiping",
+                "perks_power_of_swiping_enabled",
+                "perks_power_of_swiping_tier",
+                "Control the usage options for the \"Power Of Swiping\" perk in game.",
+            ],
+            [
+                "Adrenaline Rush",
+                "perks_adrenaline_rush_enabled",
+                "perks_adrenaline_rush_tier",
+                "Control the usage options for the \"Adrenaline Rush\" perk in game.",
+            ],
+            [
+                "Make It Rain",
+                "perks_make_it_rain_enabled",
+                "perks_make_it_rain_tier",
+                "Control the usage options for the \"Make It Rain\" perk in game.",
+            ],
+            [
+                "Mana Potion",
+                "perks_mana_potion_enabled",
+                "perks_mana_potion_tier",
+                "Control the usage options for the \"Mana Potion\" perk in game.",
+            ],
+            [
+                "Doom",
+                "perks_doom_enabled",
+                "perks_doom_tier",
+                "Control the usage options for the \"Doom\" perk in game.",
+            ],
+            [
+                "Clan Crate",
+                "perks_clan_crate_enabled",
+                "Control the usage options for the \"Clan Crate\" perk in game.",
+            ],
         ],
         "Headgear Swap": [
             "headgear_swap_enabled",
@@ -122,20 +207,37 @@ class Configuration(BaseModel):
         ],
     }
 
-    level_skills_choices = [
-        "disable",
-        "5",
-        "10",
-        "15",
-        "20",
-        "25",
-        "30",
-        "max",
-    ]
+    level_skills_choices = (
+       ("disable", "disable"),
+       ("5", "5"),
+       ("10", "10"),
+       ("15", "15"),
+       ("20", "20"),
+       ("25", "25"),
+       ("30", "30"),
+       ("max", "max"),
+    )
+    activate_skills_weight_choices = (
+        ("0", "0"),
+        ("1", "1"),
+        ("2", "2"),
+        ("3", "3"),
+        ("4", "4"),
+        ("5", "5"),
+    )
+    perks_tier_choices = (
+        ("0", "0"),
+        ("1", "1"),
+        ("2", "2"),
+        ("3", "3"),
+    )
+
+    objects = ConfigurationManager()
 
     # Generic.
     name = CharField(
-        default=get_default_instance_name,
+        max_length=255,
+        default=get_default_configuration_name,
         verbose_name="Name",
         help_text=(
             "Specify the name of this configuration."
@@ -222,6 +324,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_heavenly_strike_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills Heavenly Strike Amount",
@@ -232,6 +335,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_deadly_strike_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills Deadly Strike Amount",
@@ -242,6 +346,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_hand_of_midas_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills Hand Of Midas Amount",
@@ -252,6 +357,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_fire_sword_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills Fire Sword Amount",
@@ -262,6 +368,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_war_cry_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills War Cry Amount",
@@ -272,6 +379,7 @@ class Configuration(BaseModel):
         ),
     )
     level_skills_shadow_clone_amount = CharField(
+        max_length=255,
         default="max",
         choices=level_skills_choices,
         verbose_name="Level Skills Shadow Clone Amount",
@@ -304,53 +412,113 @@ class Configuration(BaseModel):
             "how often skills are checked to see if they're ready to be activated."
         ),
     )
-    activate_skills_heavenly_strike = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills Heavenly Strike",
-        help_text=(
-            "Determine how the \"heavenly strike\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_heavenly_strike_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
-    activate_skills_deadly_strike = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills Deadly Strike",
-        help_text=(
-            "Determine how the \"deadly strike\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_heavenly_strike_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
     )
-    activate_skills_hand_of_midas = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills Hand Of Midas",
-        help_text=(
-            "Determine how the \"hand of midas\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_heavenly_strike_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
     )
-    activate_skills_fire_sword = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills Fire Sword",
-        help_text=(
-            "Determine how the \"fire sword\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_heavenly_strike_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
     )
-    activate_skills_war_cry = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills War Cry",
-        help_text=(
-            "Determine how the \"war cry\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_deadly_strike_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
-    activate_skills_shadow_clone = CharField(
-        default="0/off/0/0",
-        verbose_name="Activate Skills Shadow Clone",
-        help_text=(
-            "Determine how the \"shadow clone\" skill is activated in game. Use the following format to\n"
-            "set the skills weight, enabled state, interval and clicks: \"(weight)/(on/off)/(interval)/(clicks)\"."
-        ),
+    activate_skills_deadly_strike_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
+    )
+    activate_skills_deadly_strike_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
+    )
+    activate_skills_deadly_strike_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
+    )
+    activate_skills_hand_of_midas_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    activate_skills_hand_of_midas_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
+    )
+    activate_skills_hand_of_midas_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
+    )
+    activate_skills_hand_of_midas_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
+    )
+    activate_skills_fire_sword_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    activate_skills_fire_sword_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
+    )
+    activate_skills_fire_sword_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
+    )
+    activate_skills_fire_sword_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
+    )
+    activate_skills_war_cry_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    activate_skills_war_cry_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
+    )
+    activate_skills_war_cry_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
+    )
+    activate_skills_war_cry_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
+    )
+    activate_skills_shadow_clone_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    activate_skills_shadow_clone_weight = CharField(
+        max_length=255,
+        default="0",
+        choices=activate_skills_weight_choices,
+        verbose_name="Weight",
+    )
+    activate_skills_shadow_clone_interval = IntegerField(
+        default=0,
+        verbose_name="Interval",
+    )
+    activate_skills_shadow_clone_clicks = IntegerField(
+        default=0,
+        verbose_name="Clicks",
     )
     # Level Heroes.
     level_heroes_enabled = BooleanField(
@@ -510,61 +678,69 @@ class Configuration(BaseModel):
             "this requires your account to have enough diamonds available to buy perks."
         ),
     )
-    perks_mega_boost = CharField(
-        default="off/1",
-        verbose_name="Perks Mega Boost",
-        help_text=(
-            "Determine how the \"mega boost\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_mega_boost_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
-    perks_power_of_swiping = CharField(
-        default="off/1",
-        verbose_name="Perks Power Of Swiping",
-        help_text=(
-            "Determine how the \"power of swiping\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_mega_boost_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
     )
-    perks_adrenaline_rush = CharField(
-        default="off/1",
-        verbose_name="Perks Adrenaline Rush",
-        help_text=(
-            "Determine how the \"adrenaline rush\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_power_of_swiping_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
-    perks_make_it_rain = CharField(
-        default="off/1",
-        verbose_name="Perks Make It Rain",
-        help_text=(
-            "Determine how the \"make it rain\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_power_of_swiping_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
     )
-    perks_mana_potion = CharField(
-        default="off/1",
-        verbose_name="Perks Mana Potion",
-        help_text=(
-            "Determine how the \"mana potion\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_adrenaline_rush_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
-    perks_doom = CharField(
-        default="off/1",
-        verbose_name="Perks Doom",
-        help_text=(
-            "Determine how the \"doom\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state and tier: \"(on/off)/(int)\"."
-        ),
+    perks_adrenaline_rush_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
     )
-    perks_clan_crate = CharField(
-        default="off",
-        verbose_name="Perks Clan Crate",
-        help_text=(
-            "Determine how the \"clan crate\" perk is used in game. Use the following format to\n"
-            "set the perks enabled state: \"(on/off)\"."
-        ),
+    perks_make_it_rain_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    perks_make_it_rain_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
+    )
+    perks_mana_potion_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    perks_mana_potion_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
+    )
+    perks_doom_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
+    )
+    perks_doom_tier = CharField(
+        max_length=255,
+        default="1",
+        choices=perks_tier_choices,
+        verbose_name="Tier",
+    )
+    perks_clan_crate_enabled = BooleanField(
+        default=False,
+        verbose_name="Enabled",
     )
     # Headgear Swap.
     headgear_swap_enabled = BooleanField(
@@ -672,6 +848,7 @@ class Configuration(BaseModel):
         ),
     )
     artifacts_discovery_upgrade_multiplier = CharField(
+        max_length=255,
         default="max",
         verbose_name="Artifact Discovery Upgrade Multiplier",
         help_text=(
@@ -704,81 +881,93 @@ class Configuration(BaseModel):
         ),
     )
 
-    def generate_defaults(self):
-        """Generate the default configurations if they do not currently exist.
-        """
-        if self.select().count() == 0:
-            self.create()
-
-    def prep_field(self, value, delimiter, append=None, coerce_value=None, coerce_index=None):
-        """
+    def prepare_comma_separated_list(self, value):
+        """Prepare a simple comma separated list of strings.
         """
         if not value:
-            return value
+            return []
 
-        value = value.replace(" ", "").replace("\n", "")
-        value = value.split(delimiter)
+        return value.replace(" ", "").replace("\n", "").split(",")
 
-        if value:
-            if coerce_value:
-                for index, val in enumerate(value):
-                    if val in coerce_value:
-                        value[index] = coerce_value[val]
-            if coerce_index:
-                for index, val in enumerate(value):
-                    if index in coerce_index:
-                        value[index] = coerce_index[index](value[index])
-            if append:
-                if isinstance(append, list):
-                    for val in append:
-                        value.append(val)
-                else:
-                    value.append(append)
+    def prepare_fields(self, fields, prepend=None, append=None):
+        """Prepare the specified fields, each field should be retrieved and returned in a list, the ordering is preserved
+        for the fields specified.
+        """
+        value = []
+
+        if prepend is not None:
+            if isinstance(prepend, list):
+                for val in prepend:
+                    value.append(
+                        val,
+                    )
+            else:
+                value.append(
+                    prepend,
+                )
+
+        for field in fields:
+            value.append(
+                getattr(self, field),
+            )
+
+        if append is not None:
+            if isinstance(append, list):
+                for val in append:
+                    value.append(
+                        val,
+                    )
+            else:
+                value.append(
+                    append,
+                )
+
+        for index, val in enumerate(value):
+            # We'll also just make sure we coerce any integer type
+            # values into a valid int type object.
+            try:
+                # Reset index with coerced value.
+                value[index] = int(val)
+            except ValueError:
+                pass
 
         return value
 
-    def prep_comma_separated_list(self, value):
-        """Prep a simple comma separated list of strings.
+    def prepare_skill_fields(self, skill, append=None):
+        """Prepare the specified skill field, the skill chosen will have it's values picked based on the configurations
+        currently setup and available.
         """
-        return self.prep_field(
-            value=value,
-            delimiter=",",
+        template = [
+            "activate_skills_%s_enabled",
+            "activate_skills_%s_weight",
+            "activate_skills_%s_interval",
+            "activate_skills_%s_clicks",
+        ]
+        return self.prepare_fields(
+            fields=[
+                t % skill for t in template
+            ],
+            prepend=skill,
+            append=append,
         )
 
-    def prep_perk_list(self, value, append=None):
-        """Prep the more complex perk field, which is required to have two indexes, the first one being an "enabled"
-        toggle, and the second one being a "tier" to set the perk to when activated.
+    def prepare_perk_fields(self, perk, append=None):
+        """Prepare the specified perk field, the perk chosen will have it's values picked based on the configurations
+        currently setup and available.
         """
-        return self.prep_field(
-            value=value,
-            delimiter="/",
+        template = [
+            "perks_%s_enabled",
+        ]
+        if perk != "clan_crate":
+            template.append(
+                "perks_%s_tier",
+            )
+        return self.prepare_fields(
+            fields=[
+                t % perk for t in template
+            ],
+            prepend=perk,
             append=append,
-            coerce_value={
-                "on": True,
-                "off": False,
-            },
-            coerce_index={
-                1: int,
-            },
-        )
-
-    def prep_skill_list(self, value, append=None):
-        """Prep the more complex skill field, which is required to have four indexes, the first one being the "weight"
-        of the skill, second being the "enabled" toggle, third being the "interval", and the fourth being the "clicks".
-        """
-        return self.prep_field(
-            value=value,
-            delimiter="/",
-            append=append,
-            coerce_value={
-                "on": True,
-                "off": False,
-            },
-            coerce_index={
-                0: int,
-                2: int,
-                3: int,
-            },
         )
 
     def prep(self):
@@ -787,26 +976,26 @@ class Configuration(BaseModel):
         """
         obj = copy.deepcopy(self)
 
-        obj.shop_pets_purchase_pets = self.prep_comma_separated_list(value=self.shop_pets_purchase_pets)
-        obj.artifacts_upgrade_artifacts = self.prep_comma_separated_list(value=self.artifacts_upgrade_artifacts)
+        obj.shop_pets_purchase_pets = self.prepare_comma_separated_list(value=self.shop_pets_purchase_pets)
+        obj.artifacts_upgrade_artifacts = self.prepare_comma_separated_list(value=self.artifacts_upgrade_artifacts)
 
         # Skills.
-        obj.activate_skills_heavenly_strike = self.prep_skill_list(self.activate_skills_heavenly_strike, append="heavenly_strike")
-        obj.activate_skills_deadly_strike = self.prep_skill_list(self.activate_skills_deadly_strike, append="deadly_strike")
-        obj.activate_skills_hand_of_midas = self.prep_skill_list(self.activate_skills_hand_of_midas, append="hand_of_midas")
-        obj.activate_skills_fire_sword = self.prep_skill_list(self.activate_skills_fire_sword, append="fire_sword")
-        obj.activate_skills_war_cry = self.prep_skill_list(self.activate_skills_war_cry, append="war_cry")
-        obj.activate_skills_shadow_clone = self.prep_skill_list(self.activate_skills_shadow_clone, append="shadow_clone")
+        obj.activate_skills_heavenly_strike = self.prepare_skill_fields("heavenly_strike")
+        obj.activate_skills_deadly_strike = self.prepare_skill_fields("deadly_strike")
+        obj.activate_skills_hand_of_midas = self.prepare_skill_fields("hand_of_midas")
+        obj.activate_skills_fire_sword = self.prepare_skill_fields("fire_sword")
+        obj.activate_skills_war_cry = self.prepare_skill_fields("war_cry")
+        obj.activate_skills_shadow_clone = self.prepare_skill_fields("shadow_clone")
 
         # Perks.
-        obj.perks_mega_boost = self.prep_perk_list(self.perks_mega_boost, append="mega_boost")
-        obj.perks_power_of_swiping = self.prep_perk_list(self.perks_power_of_swiping, append="power_of_swiping")
-        obj.perks_adrenaline_rush = self.prep_perk_list(self.perks_adrenaline_rush, append="adrenaline_rush")
-        obj.perks_make_it_rain = self.prep_perk_list(self.perks_make_it_rain, append="make_it_rain")
-        obj.perks_mana_potion = self.prep_perk_list(self.perks_mana_potion, append="mana_potion")
-        obj.perks_doom = self.prep_perk_list(self.perks_doom, append="doom")
+        obj.perks_mega_boost = self.prepare_perk_fields("mega_boost")
+        obj.perks_power_of_swiping = self.prepare_perk_fields("power_of_swiping")
+        obj.perks_adrenaline_rush = self.prepare_perk_fields("adrenaline_rush")
+        obj.perks_make_it_rain = self.prepare_perk_fields("make_it_rain")
+        obj.perks_mana_potion = self.prepare_perk_fields("mana_potion")
+        obj.perks_doom = self.prepare_perk_fields("doom")
         # Clan crate perk doesn't support a "tiered" approach.
-        # We'll explicitly set the tier to "0" .
-        obj.perks_clan_crate = self.prep_perk_list(self.perks_clan_crate, append=[0, "clan_crate"])
+        # We'll explicitly set the tier to "0" during preparation.
+        obj.perks_clan_crate = self.prepare_perk_fields("clan_crate", append=0)
 
         return obj
