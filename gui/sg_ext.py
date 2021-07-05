@@ -63,33 +63,33 @@ def PopupWindowEvents(title, events, icon=wx.DEFAULT_WINDOW_ICON):
 
 
 INPUT_SCHEMA = {
-    "TEXT": {
+    "TextField": {
         "widget": sg.Multiline,
         "default_kwarg": "default_text",
         "required_kwargs": {
             "size": (45, 4),
         },
     },
-    "BOOL": {
+    "BooleanField": {
         "widget": sg.Checkbox,
         "default_kwarg": "default",
         "required_kwargs": {
             "text": "",
         },
     },
-    "VARCHAR": {
+    "CharField": {
         "widget": sg.Input,
         "default_kwarg": "default_text",
         "required_kwargs": {},
     },
-    "VARCHAR_CHOICES": {
+    "CharField_Choices": {
         "widget": sg.InputCombo,
         "default_kwarg": "default_value",
         "required_kwargs": {
             "values": "choices",
         },
     },
-    "INT": {
+    "IntegerField": {
         "widget": sg.Input,
         "default_kwarg": "default_text",
         "required_kwargs": {},
@@ -108,6 +108,13 @@ def handle_required_kwargs(mdl, kwargs, parsed=None):
 
     for key, val in kwargs.items():
         parsed_val = getattr(mdl, str(val), val)
+
+        # If the value is a tuple of tuples (Django specific choices options).
+        if isinstance(parsed_val, tuple) and isinstance(parsed_val[0], tuple):
+            # Small shim to ensure "choices", which result
+            # in a tuple of choices, use the correct value.
+            parsed_val = [tup[0] for tup in parsed_val]
+
         parsed[key] = parsed_val
 
     return parsed
@@ -117,34 +124,72 @@ def generate_input_fields(fields, model_obj):
     rows = []
 
     for i, field in enumerate(fields, start=1):
-        row, mdl = (
-            [],
-            getattr(model_obj._schema.model, field),
-        )
-        val, verbose, help_text, field_type = (
-            getattr(model_obj, field),
-            mdl.verbose_name,
-            mdl.help_text,
-            mdl.field_type,
-        )
-        # Update explicit field_type so we can use an input combo
-        # box on any inputs that use the "choices" option.
-        if field_type == "VARCHAR" and mdl.choices:
-            field_type = "VARCHAR_CHOICES"
+        if isinstance(field, list):
+            help_text = field[-1]
+            column = []
+            for col_i, col_field in enumerate(field, start=1):
+                if col_i == 1:
+                    # The first index should always be a "label" for this group
+                    # of inputs that are editable.
+                    column.append(sg.Column([[sg.Text(col_field, size=(15, 2))]]))
+                elif col_i == len(field):
+                    # Passing upon the last index so the help text is skipped.
+                    pass
+                else:
+                    mdl = getattr(model_obj._meta.model, col_field).field
+                    val, verbose, field_type = (
+                        getattr(model_obj, col_field),
+                        mdl.verbose_name,
+                        mdl.get_internal_type(),
+                    )
+                    # Update explicit field_type so we can use an input combo
+                    # box on any inputs that use the "choices" option.
+                    if field_type == "CharField" and mdl.choices:
+                        field_type = "CharField_Choices"
 
-        # Retrieve our schema and get the input field
-        # kwargs ready for widget generation.
-        schema = INPUT_SCHEMA[field_type]
-        default_kwargs = {
-            schema["default_kwarg"]: val,
-        }
-        required_kwargs = handle_required_kwargs(
-            mdl=mdl,
-            kwargs=schema["required_kwargs"],
-        )
+                    # Retrieve our schema and get the input field
+                    # kwargs ready for widget generation.
+                    schema = INPUT_SCHEMA[field_type]
+                    default_kwargs = {
+                        schema["default_kwarg"]: val,
+                    }
+                    required_kwargs = handle_required_kwargs(
+                        mdl=mdl,
+                        kwargs=schema["required_kwargs"],
+                    )
+                    column.append(sg.Column([[sg.Text(verbose), schema["widget"](key=col_field, **default_kwargs, **required_kwargs)]]))
+            rows.append(column)
+            rows.append([sg.Text(help_text, font=("Any", 8))])
 
-        rows.append([sg.Text(verbose), schema["widget"](key=field, **default_kwargs, **required_kwargs)])
-        rows.append([sg.Text(help_text, font=("Any", 8))])
+        if isinstance(field, str):
+            row, mdl = (
+                [],
+                getattr(model_obj._meta.model, field).field,
+            )
+            val, verbose, help_text, field_type = (
+                getattr(model_obj, field),
+                mdl.verbose_name,
+                mdl.help_text,
+                mdl.get_internal_type(),
+            )
+            # Update explicit field_type so we can use an input combo
+            # box on any inputs that use the "choices" option.
+            if field_type == "CharField" and mdl.choices:
+                field_type = "CharField_Choices"
+
+            # Retrieve our schema and get the input field
+            # kwargs ready for widget generation.
+            schema = INPUT_SCHEMA[field_type]
+            default_kwargs = {
+                schema["default_kwarg"]: val,
+            }
+            required_kwargs = handle_required_kwargs(
+                mdl=mdl,
+                kwargs=schema["required_kwargs"],
+            )
+
+            rows.append([sg.Text(verbose), schema["widget"](key=field, **default_kwargs, **required_kwargs)])
+            rows.append([sg.Text(help_text, font=("Any", 8))])
 
         if i != len(fields):
             rows.append([sg.HorizontalSeparator(color="white")])
@@ -154,7 +199,7 @@ def generate_input_fields(fields, model_obj):
 def generate_settings_input_layout(settings_obj):
     """Generate a valid layout used to generate and display editable settings.
     """
-    fields = settings_obj._schema.model.editable_fields
+    fields = settings_obj._meta.model.editable_fields
     inputs = generate_input_fields(
         fields=fields,
         model_obj=settings_obj,
@@ -177,7 +222,7 @@ def generate_configuration_input_layout(configuration_obj):
     """Generate a valid layout used to generate and display an editable configuration.
     """
     tabs = []
-    grouped_fields = configuration_obj._schema.model.grouped_fields
+    grouped_fields = configuration_obj._meta.model.grouped_fields
     # Our grouped fields will contain a list of labels with a dictionary
     # of the expected settings in each group.
     for group, fields in grouped_fields.items():
@@ -204,7 +249,7 @@ def PopupWindowConfiguration(title, configuration_obj, icon=sg.DEFAULT_WINDOW_IC
     # Ensure only configuration fields are returned as part of
     # the values dictionary.
     values = {key: val for key, val in values.items() if key in [
-        key for key in configuration_obj._meta.fields.keys()
-        if key != "id"
+        key for key in configuration_obj.__dict__.keys()
+        if key not in ["_state", "id"]
     ]}
     return event, values
