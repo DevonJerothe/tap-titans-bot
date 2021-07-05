@@ -16,6 +16,8 @@ from gui.utilities import (
 )
 from gui.settings import (
     DT_FORMAT,
+    DISCORD_URL,
+    GITHUB_URL,
     ICON_FILE,
     MENU_DISABLED,
     MENU_SEPARATOR,
@@ -35,6 +37,8 @@ from gui.settings import (
     MENU_CONFIGURATIONS_ADD,
     MENU_CONFIGURATIONS,
     MENU_SETTINGS,
+    MENU_DISCORD,
+    MENU_GITHUB,
     MENU_EXIT,
     MENU_TIMEOUT,
 )
@@ -48,6 +52,7 @@ from bot.core.window import (
 
 import PySimpleGUIWx as sg
 import gui.sg_ext as sgx
+import webbrowser
 import threading
 import locale
 import operator
@@ -131,6 +136,8 @@ class GUI(object):
             MENU_TOOLS_MOST_RECENT_LOG: self.tools_most_recent_log,
             MENU_CONFIGURATIONS_ADD: self.configurations_add,
             MENU_SETTINGS: self.settings,
+            MENU_DISCORD: self.discord,
+            MENU_GITHUB: self.github,
             MENU_EXIT: self.exit,
             MENU_TIMEOUT: self.refresh,
         }
@@ -247,7 +254,7 @@ class GUI(object):
                     }
                 )
             if event == "Delete":
-                Configuration.delete().where(Configuration.id == configuration_obj.id).execute()
+                configuration_obj.delete()
                 self.log(
                     message="Configuration: \"%(name)s\" Has Been Deleted Successfully..." % {
                         "name": configuration_obj.name,
@@ -374,6 +381,9 @@ class GUI(object):
                     *self.refresh_configurations(refresh=False)
                 ],
                 self.menu_entry(text=MENU_SETTINGS),
+                self.menu_entry(separator=True),
+                self.menu_entry(text=MENU_DISCORD),
+                self.menu_entry(text=MENU_GITHUB),
                 self.menu_entry(separator=True),
                 self.menu_entry(text=MENU_EXIT),
             ],
@@ -748,6 +758,20 @@ class GUI(object):
                 self.log(
                     "Settings Have Been Saved Successfully..."
                 )
+
+    def discord(self, **kwargs):
+        """"discord" event functionality.
+        """
+        webbrowser.open_new_tab(
+            url=DISCORD_URL,
+        )
+
+    def github(self, **kwargs):
+        """"github" event functionality.
+        """
+        webbrowser.open_new_tab(
+            url=GITHUB_URL,
+        )
 
     def exit(self, **kwargs):
         """"exit" event functionality.
