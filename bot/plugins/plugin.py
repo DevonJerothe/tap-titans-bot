@@ -125,11 +125,11 @@ class BotPlugin(object):
         key = key.split(separator) if separator in key else [key]
 
         for schema in schemas:
-            # If the schema isn't a dictionary, it must be a model (current impl).
-            # so we can use getattr proper.
+            # If the schema isn't a dictionary, it must be a model as
+            # defined in the existing default schemas.
             if not isinstance(schema, dict):
                 # Bit of a hack, but gets us our normalized dict.
-                schema = schema.__dict__["__data__"]
+                schema = schema.__dict__
 
             for val in key:
                 if not key_parsed and val in schema:
