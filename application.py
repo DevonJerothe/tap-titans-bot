@@ -62,6 +62,6 @@ if __name__ == "__main__":
 
     gui = GUI(
         application_name="Tap Titans Bot",
-        application_version="1.2.1",
+        application_version="1.2.2",
     )
     gui.run()
