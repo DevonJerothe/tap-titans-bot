@@ -46,7 +46,7 @@ class Perks(BotPlugin):
         # We should be able to see all (or most) of the perks in game, clan crate is on the screen.
         # We'll search for each enabled perk, if it isn't found, we'll scroll up a bit.
         for perk in self.bot.perks_lst:
-            enabled, tier, perk = (
+            perk, enabled, tier = (
                 perk[0],
                 perk[1],
                 perk[2],

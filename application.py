@@ -1,23 +1,34 @@
+import django
+import sys
+import os
+
+
+# Turning off bytecode generation...
+sys.dont_write_bytecode = True
+
+# Ensure Django is using our settings module, which contains
+# the proper database connection information.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
+
+# This setup call actually handles most of the initialization
+# work, once this is done, from this entry point, we can access
+# the orm and deal with management commands, etc.
+django.setup()
+
+
+# End Django Bootstrap...
 from settings import (
-    MIGRATIONS_DIRECTORY,
     LOCAL_DATA_DIRECTORY,
     LOCAL_DATA_LOGS_DIRECTORY,
 )
 
-from database.database import (
-    db,
-    router,
+from django.core.management import (
+    call_command,
 )
-from database.models.settings.settings import Settings
-from database.models.instance.instance import Instance
-from database.models.configuration.configuration import Configuration
-from database.models.event.event import Event
 
 from gui.main import (
     GUI,
 )
-
-import os
 
 
 def handle_local_directories():
@@ -32,34 +43,25 @@ def handle_local_directories():
             os.makedirs(directory)
 
 
+def handle_migrations():
+    """Handle migration execution through the Django management command.
+    """
+    call_command(
+        "migrate",
+    )
+
+
 if __name__ == "__main__":
     # Local data directory should be built before
     # dealing with any functionality that may need
     # to access that directory.
     handle_local_directories()
-    # Ensure database tables are upto date and generated
-    # where applicable.
-    db.create_tables([
-        Settings,
-        Instance,
-        Configuration,
-        Event,
-    ])
-    # Loop through available models, creating them in the
-    # migrator before running our router.
-    for model in [
-        Settings,
-        Instance,
-        Configuration,
-        Event,
-    ]:
-        router.migrator.create_table(model)
-
-    router.migrate_dir = MIGRATIONS_DIRECTORY
-    router.run()
+    # Migrations are handled after, since we need
+    # the database directory available to run here.
+    handle_migrations()
 
     gui = GUI(
         application_name="Tap Titans Bot",
-        application_version="1.2.1",
+        application_version="1.2.2",
     )
     gui.run()

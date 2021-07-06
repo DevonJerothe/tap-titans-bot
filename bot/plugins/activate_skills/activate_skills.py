@@ -48,9 +48,9 @@ class ActivateSkills(ConfigureSkills):
             # Ensure we loop through the ordered skills to retain the proper
             # activation order for each ready skill.
             for skill in self.bot.skills_lst:
-                interval, clicks, skill = (
+                skill, interval, clicks = (
+                    skill[0],
                     skill[2],
-                    skill[3],
                     skill[4],
                 )
                 if skill in ready:

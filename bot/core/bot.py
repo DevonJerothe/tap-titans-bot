@@ -43,6 +43,7 @@ class Bot(object):
         application_version,
         event,
         instance,
+        instance_obj,
         instance_name,
         instance_func,
         window,
@@ -91,6 +92,7 @@ class Bot(object):
         # This instance can be passed back to the gui whenever a
         # bot session needs to interact with a running bot.
         self.instance = instance
+        self.instance_obj = instance_obj
         self.instance_name = instance_name
         self.instance_func = instance_func
 
@@ -218,7 +220,8 @@ class Bot(object):
 
         # Session Data.
         # ------------------
-        # "powerful_hero" - most powerful hero currently in game.
+        # "powerful_hero" - Most powerful hero currently in game.
+        # "daily_limit_reached" - Store a flag to determine if the prestige daily limit is reached.
         self.powerful_hero = None
         self.daily_limit_reached = False
 
@@ -1340,7 +1343,7 @@ class Bot(object):
         The event should be a string descriptor of the event.
         """
         event_kwargs = {
-            "instance": self.instance,
+            "instance": self.instance_obj,
             "event": event,
         }
         if timestamp:
@@ -1348,7 +1351,7 @@ class Bot(object):
                 "timestamp": timestamp,
             })
 
-        self.event.create(
+        self.event.objects.create(
             **event_kwargs,
         )
 

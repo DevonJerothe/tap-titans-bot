@@ -28,12 +28,17 @@ class ConfigureSkills(BotPlugin):
 
     def execute(self, force=False):
         if self.plugin_enabled:
-            # [weight, enabled, interval, clicks, skill].
+            # [skill, enabled, weight, interval, clicks].
             for skill in self.bot.skills_lst:
-                if skill[1]:
+                skill, enabled, interval = (
+                    skill[0],
+                    skill[1],
+                    skill[3],
+                )
+                if enabled:
                     self._configure_skill(
-                        skill=skill[4],
-                        interval=skill[2],
+                        skill=skill,
+                        interval=interval,
                     )
 
 

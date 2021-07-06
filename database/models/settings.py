@@ -1,15 +1,26 @@
-from peewee import (
+from django.db.models import (
+    Model,
+    Manager,
     CharField,
     BooleanField,
     IntegerField,
 )
 
-from database.database import (
-    Singleton,
-)
+
+class SettingsManager(Manager):
+    def get(self):
+        """When retrieving our settings instance, we only ever want to return the first one if it exists,
+        we treat this model like a "Singleton" in the sense that we only ever want one row.
+        """
+        if self.count() == 0:
+            self.create()
+
+        # Always grabbing the first available settings row.
+        # Create happens above if none exist.
+        return self.first()
 
 
-class Settings(Singleton):
+class Settings(Model):
     """Settings instance should expose a singular row that contains all application settings.
     """
     editable_fields = [
@@ -18,6 +29,15 @@ class Settings(Singleton):
         "log_level",
         "log_purge_days",
     ]
+
+    log_level_choices = (
+        ("DEBUG", "DEBUG"),
+        ("ERROR", "ERROR"),
+        ("WARNING", "WARNING"),
+        ("INFO", "INFO"),
+    )
+
+    objects = SettingsManager()
 
     failsafe = BooleanField(
         default=True,
@@ -39,13 +59,9 @@ class Settings(Singleton):
         ),
     )
     log_level = CharField(
+        max_length=255,
         default="INFO",
-        choices=[
-            "DEBUG",
-            "ERROR",
-            "WARNING",
-            "INFO",
-        ],
+        choices=log_level_choices,
         verbose_name="Log Level",
         help_text=(
             "Determine the log level used when displaying logs while a bot session is running. This setting is only applied\n"
@@ -65,13 +81,16 @@ class Settings(Singleton):
     # Unconfigurable settings. These are handled implicitly by the application
     # and we do not need to expose these to the gui for modification by the user.
     console_size = CharField(
+        max_length=255,
         default="mode con: cols=140 lines=200",
     )
     last_window = CharField(
+        max_length=255,
         default=None,
         null=True,
     )
     last_configuration = CharField(
+        max_length=255,
         default=None,
         null=True,
     )
