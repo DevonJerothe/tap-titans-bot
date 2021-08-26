@@ -38,6 +38,10 @@ of using the bundled .exe file included in a release.
   * Ensure you install the correct version of Python as some of the requirements
     may not work with a different versions.
 
+* [Google Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
+  * For Windows users either build from source or install via [UB-Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) 
+  * For Mac OS `brew install tesseract`
+
 * Virtual environment (or main python env) with project dependencies installed (requirements.txt)
   * `pip install -r requirements.txt`
 
